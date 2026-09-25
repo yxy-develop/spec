@@ -33,8 +33,10 @@ compiler's diagnostic codes are listed in the compiler repository
 
 - **[TY-1]** *Value types* are `bool`, the integers, `()`, enums, and `Option`
   and `Result` of value types. They are copied on assignment and when passed.
-- **[TY-2]** `usize` and `isize` are 64 bits wide on the only supported target
-  (aarch64-apple-darwin). They are distinct types from `u64` and `i64`.
+- **[TY-2]** `usize` and `isize` have the pointer width of the target's data
+  model: 32 or 64 bits in this version. They are distinct types from `u32`,
+  `u64`, `i32` and `i64` on every target. All other integer types have the
+  same width on every target.
 - **[TY-3]** Enum variants carry no data in this version, and an enum has
   between 1 and 256 variants. `Option` and `Result` are known to the compiler;
   user-defined generics do not exist yet.
@@ -221,9 +223,11 @@ Both operands have the same integer type, taken from them or from context.
 ### 6.5 Conversions
 
 - **[CONV-1]** `widen(x)` converts an integer to the integer type expected by
-  context **only when every value fits** (same signedness and not narrower, or
-  unsigned to a strictly wider signed type). Anything else is an error at
-  compile time.
+  context **only when every value fits on every supported target** (same
+  signedness and not narrower, or unsigned to a strictly wider signed type,
+  with `usize`/`isize` counted as both 32 and 64 bits). So `widen(u32 → usize)`
+  and `widen(usize → u64)` are accepted, and `widen(u64 → usize)` is not.
+  Anything else is an error at compile time.
 - **[CONV-2]** `checked_convert(x)` converts to the `Option<T>` expected by
   context: `Some(v)` when the value fits in `T`, `None` otherwise. It is
   checked at run time.
@@ -277,20 +281,32 @@ Static effect checking is not an operating-system sandbox.
   implementation, such as the stack probe `__chkstk_darwin`) cannot be `extern`
   or `export` symbols. Unwinding across the boundary does not exist.
 
-## 9. Entry point
+## 9. Targets
+
+- **[TGT-1]** A program is compiled for one target, chosen explicitly
+  (default: the host). The target fixes the data model ([TY-2]), the generated
+  code and the runtime; it does not change syntax, names, other types, effects
+  or cells.
+- **[TGT-2]** A program's validity depends on the target only through the
+  range of `usize`/`isize` values (for example, the literal `4294967296` does
+  not fit `usize` on a 32-bit target) — never through conversion rules
+  ([CONV-1]).
+- **[TGT-3]** `usize` crosses the C boundary as `size_t` of the target.
+
+## 10. Entry point
 
 - **[MAIN-1]** `fn main()` takes no parameters and returns `()` (exit status 0)
   or `u8` (the exit status). It declares its effects like any function. How
   capabilities reach `main` in a hosted environment is future work.
 
-## 10. Incomplete programs
+## 11. Incomplete programs
 
 - **[HOLE-1]** A typed hole `$` or `$name` stands for a missing expression. The
   compiler reports it with the type expected at that position, so tools and
   agents can inspect the gap; `check` and `build` reject any program that still
   contains a hole.
 
-## 11. Outside this version
+## 12. Outside this version
 
 Rejected with a diagnostic, never ignored: `when`, structs, enum payloads,
 user-defined generics, traits, closures, function values, method calls, `for`,
