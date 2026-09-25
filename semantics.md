@@ -154,14 +154,26 @@ compiler's diagnostic codes are listed in the compiler repository
 
 Operands and arguments are evaluated left to right, each completely, before the
 operation or call. `&&` and `||` evaluate their right operand only when needed.
-`a[i]` evaluates `i`, then checks bounds, then reads. `match` evaluates its
-subject once and tries arms from top to bottom.
+`match` evaluates its subject once and tries arms from top to bottom.
+
+- **[ORD-1]** `a[i]` evaluates `i`, then checks bounds, then reads.
+- **[ORD-2]** `a[i] = value` evaluates `i`, then checks bounds, then evaluates
+  `value`, then stores. An out-of-bounds index stops the program before `value`
+  is evaluated.
+- **[ORD-3]** An array literal `[e1, e2, …]` evaluates every element, left to
+  right, before the array is stored; an element may read the array being
+  assigned.
+- **[ORD-4]** `[value; N]` evaluates `value` exactly once, also when `N` is 0,
+  and copies it into every element.
 
 ### 6.2 Integer arithmetic
 
-**[NUM-1]** An integer operation stops the program (a *trap*) exactly when its
-mathematical result is not representable in the operand type, or is undefined.
-The same rules hold in every build mode; there is no unchecked release mode.
+**[NUM-1]** An **arithmetic** operation (`+ - * / %`, unary `-`) stops the
+program (a *trap*) exactly when its mathematical result is not representable
+in the operand type, or is undefined. Shifts and bitwise operations are
+defined differently ([NUM-3], [NUM-4]): a shift traps only on an invalid
+amount, and `<<` discards the bits shifted out by definition. The same rules
+hold in every build mode; there is no unchecked release mode.
 
 | Operation | Traps when | Trap kind |
 |---|---|---|
@@ -189,9 +201,11 @@ The same rules hold in every build mode; there is no unchecked release mode.
   status **101**. It runs no cleanup and is not recoverable. Output written
   before the trap is kept (the test hooks write without buffering).
 - **[TRAP-2]** Not a trap in this version: stack exhaustion from deep recursion
-  or large arrays (stack probes guarantee that the guard page is touched, so the
-  operating system ends the process instead of memory being overwritten) and
-  non-termination.
+  or large arrays, and non-termination. The generated code requests stack
+  probes, as clang does for C on this target, so that a large frame touches the
+  guard page and the operating system ends the process instead of memory being
+  overwritten. This is verified by inspecting the generated code; no test
+  exhausts the stack yet.
 
 ### 6.4 Explicit arithmetic
 

@@ -14,8 +14,9 @@ an error or absence; wrapping and saturation explicit.
 
 ## Decision
 
-1. An integer operation traps exactly when its mathematical result is not
-   representable or is undefined: `+ - *` and unary `-` on overflow, `/` and
+1. An arithmetic operation traps exactly when its mathematical result is not
+   representable or is undefined (shifts and bitwise operations have their own
+   rules: a shift traps only on an invalid amount and `<<` discards bits): `+ - *` and unary `-` on overflow, `/` and
    `%` by zero, signed `MIN / -1`, shifts by an amount outside `0..bits`, and
    out-of-bounds indexing. `MIN % -1` is `0` (representable), not a trap.
 2. The rules are identical at every optimization level; there is no unchecked
