@@ -35,8 +35,10 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
 - **[LEX-5]** Keywords: `module enum struct fn extern export effects mut
   require else return if while match true false`.
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `as async await
-  break const continue defer dyn for impl import in loop par pub self static
-  trait type unsafe use when where yield`.
+  break const continue defer dyn for impl import in loop package par pub self
+  static trait type unsafe use when where yield`. Packages, modules and imports
+  are specified, not yet implemented, in `modules.md` (decision 0011); there
+  `package`, `import`, `pub` and `as` become keywords (`modules.md` §9).
 - **[LEX-7]** `let` and `var` are identifiers, but a statement that starts with
   `let name` or `var name` is rejected with a note pointing to `:=`.
 - **[LEX-8]** Conventions: `snake_case` for functions, variables and modules;

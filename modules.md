@@ -212,8 +212,8 @@ effects {}
   the import path; when two modules could provide the same package path, the
   import is ambiguous and an error. An import of a module that is not
   required is an error whose note shows the explicit command that would add
-  it ([DEP-4]). The compiler never downloads, guesses or substitutes a module
-  ([UPD-1], [NET-1]).
+  it ([DEP-4]). The compiler never guesses or substitutes a module, and
+  downloads only content the lock pins ([DEP-9]; [UPD-1], [NET-1]).
 - **[IMP-13]** An import names a package. A path with no package — for
   example a module root without `.yxy` files — is an error.
 - **[IMP-14]** *(tooling)* `yxy fmt` writes imports one per line, sorted by
@@ -469,7 +469,8 @@ license = "BSD-3-Clause"   # declared by the module, not audited
   Proposed names, not final: `yxy add <path>[@<version>]`,
   `yxy update [<path>[@<version>]]`, `yxy remove <path>`, and `yxy lock`,
   which recomputes the lock after a manual edit of the manifest. `yxy fetch`
-  obtains the content the lock pins ([DEP-7]) and changes neither file.
+  obtains the content the lock pins without building ([DEP-9]) and changes
+  neither file.
 - **[DEP-2]** The same manifest and the same origin content produce the same
   lock, byte for byte. Because selection uses minimum versions ([VER-5]),
   `yxy lock` never picks a version newer than some requirement names, and
@@ -499,19 +500,27 @@ license = "BSD-3-Clause"   # declared by the module, not audited
 - **[DEP-7]** **Offline** mode (`--offline`): no network request of any
   kind — no name lookup, origin, mirror or index. Only the local store is
   used; missing content is a diagnostic that names the module, the version
-  and the content hash. Builds are always offline: content missing from the
-  local store is obtained only by an explicit `yxy fetch`, which downloads
-  exactly what the lock pins (provisional; OPEN #24).
+  and the content hash, and points to `yxy fetch` to prepare offline work.
 - **[DEP-8]** Content enters the local store only after it has been written
   completely and verified against the lock or, during `add` and `update`,
   against the reference in force ([NET-5]). A partial or unverified entry is
   never used (review CACHE-03). Projects share verified content read-only;
   a build never modifies stored content (review CACHE-02).
+- **[DEP-9]** **(author, 2026-09-25)** A build may obtain content that the
+  lock pins and that is missing from the local store, as `yxy fetch` does:
+  exactly the locked revision of each locked module, verified against the
+  locked content hash before any use ([DEP-8]), and reported, one line per
+  module obtained. A build never selects a version, never requests a module
+  or version that the lock does not pin, never writes the manifest or the
+  lock ([DEP-5]), and never falls back to another source ([NET-4]). A
+  verification failure stops the build with an integrity error ([LOCK-5]).
+  With `--offline` a build makes no request at all ([DEP-7]).
 
 ### 6.4 Network, privacy and trust
 
-- **[NET-1]** Network access happens only in the commands of [DEP-1] — never
-  in the compiler's checks and builds, and never at run time of a compiled
+- **[NET-1]** Network access happens only in the commands of [DEP-1] and,
+  to obtain content the lock pins, in builds ([DEP-9]) — never in `--offline`
+  mode, never to choose what to use, and never at run time of a compiled
   program ([AUTHOR-2]).
 - **[NET-2]** The toolchain obtains modules directly from their origins, or
   from local directories, without any package service. A mirror, proxy or
@@ -689,7 +698,7 @@ same inputs).
 | Letters in paths | uppercase allowed, escaped in the module cache | lowercase ASCII only ([PATH-2]) |
 | Package name and path | independent | equal to the last element when that is an identifier ([PKG-3]) |
 | Requirements and hashes | `go.mod` and `go.sum` | `yxy.toml` and `yxy.lock`, which holds the whole closure ([LOCK-2]) |
-| Builds and the network | a build may download required modules missing from the module cache | builds never use the network; `yxy fetch` ([DEP-7]) |
+| Builds and the network | a build may download required modules missing from the module cache | a build may download only what the lock pins, verified against the lock's content hash; `--offline` forbids any request ([DEP-9], [DEP-7]) |
 | Replacements in dependencies | ignored | not applied, and reported in the add/update diff ([MAN-4]) |
 | Toolchain version | since Go 1.21, a newer `go` line can make the `go` command download and run a newer toolchain | minimum checked, never downloaded ([MAN-7]) |
 | Mirror and checksum database | a public proxy and checksum database by default | none by default; the service is optional and not Go-compatible ([NET-2]) |

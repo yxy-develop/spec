@@ -9,7 +9,9 @@ compiler's diagnostic codes are listed in the compiler repository
 ## 1. Programs
 
 - **[PRG-1]** A program is one source file, which is one module. It starts with
-  `module <name>`. Imports are not supported yet.
+  `module <name>`. Imports are not supported yet. Packages, modules and
+  imports are specified, not implemented, in `modules.md` (decision 0011);
+  until they are implemented this rule holds.
 - **[PRG-2]** Items are enums, structs and functions. Item names are unique in
   the module. The prelude names — `bool`, the integer type names, `Option`,
   `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and §6.5 — can
@@ -377,14 +379,15 @@ Static effect checking is not an operating-system sandbox.
 
 ## 12. Outside this version
 
-Rejected with a diagnostic, never ignored: `when`, enum payloads,
-user-defined generics, traits, closures, function values, method calls, `for`,
-`loop`, `break`, `continue`, imports and modules, `pub`, `unsafe`, `&mut`,
-references other than slices, arrays as parameters or return values, nested
-cells, `if` as an expression, strings, characters, floating point, 128-bit
-integers, concurrency (`par`, `async`), casts (`as`), block comments, generic
-enums, mutable slices, enums without variants and enums with more than 256
-variants; for structs: generic structs, structs without fields, arrays and
-slices as fields, recursive structs, structs beyond [STRUCT-9], equality,
-patterns, methods, field shorthand, update syntax, fields of array elements or
-temporaries as assignment targets, and structs at the C boundary.
+Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
+generics, traits, closures, function values, method calls, `for`, `loop`,
+`break`, `continue`, imports, packages and modules, `pub` (specified in
+`modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
+arrays as parameters or return values, nested cells, `if` as an expression,
+strings, characters, floating point, 128-bit integers, concurrency (`par`,
+`async`), casts (`as`), block comments, generic enums, mutable slices, enums
+without variants and enums with more than 256 variants; for structs: generic
+structs, structs without fields, arrays and slices as fields, recursive
+structs, structs beyond [STRUCT-9], equality, patterns, methods, field
+shorthand, update syntax, fields of array elements or temporaries as assignment
+targets, and structs at the C boundary.

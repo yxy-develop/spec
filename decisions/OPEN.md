@@ -9,7 +9,7 @@ would change it. Closing an entry means writing a numbered decision.
 | 2 | Formatter layout of cells | always multi-line | loses the compact presentation the author also shows | author preference; readability study |
 | 3 | `when` cells | rejected | the pattern is incomplete without it | a design for skipped cells and `Option` results |
 | 4 | Nested cells and block values | not allowed | limits composition | a construct for leaving a nested cell that is not `return` |
-| 5 | Structs, enum payloads, generics, traits | not supported | most real programs need them | milestone 0.1/0.2 designs |
+| 5 | Enum payloads, generics, traits | not supported | most real programs need them | milestone 0.1/0.2 designs |
 | 6 | Ownership, moves, `&mut`, cleanup order | not supported (all types copy) | memory-safety claims limited to the subset | milestone 0.2 |
 | 7 | Text: bytes, borrowed UTF-8, owned strings | not supported | no text processing | a design separating bytes, code points and graphemes |
 | 8 | Floating point | not supported | no numeric code | a policy for NaN, signed zero, rounding and no fast-math by default |
@@ -28,7 +28,6 @@ would change it. Closing an entry means writing a numbered decision.
 | 21 | Private origins | path patterns in the main manifest and in the user's configuration, applied before the first request, with no fallback ([NET-3], [NET-4]) | pattern syntax, credential helpers, leaks through name lookups or logs | a design and tests with a private origin |
 | 22 | Index/proxy protocol; repository root of an origin | none: direct access to origins and local directories; root known for some hosts, otherwise an explicit source ([PATH-7], [MAN-5], [NET-2]) | dependence on origin availability; custom domains need an explicit source | the versioned HTTP protocol of the service |
 | 23 | Repository, name and owner of the package service | none created — **awaiting the author** | service work without a home | the author's decision, proposed through `plans` |
-| 24 | Network during builds | builds never use the network; `yxy fetch` obtains pinned content ([DEP-7]) | one more step after cloning | author preference for builds that download pinned, verified content and report it |
 | 25 | Untagged revisions (pseudo-versions) | cannot be required; a replacement is used ([VER-2]) | friction to use an unreleased fix | demand from real use |
 | 26 | Target-specific files and requirements | none: every file and requirement on every target ([PKG-6], [BLD-4]) | platform code needs another structure | standard library and FFI needs per target |
 | 27 | Native code in dependencies | not supported; foreign code linked only by the main build ([INIT-4]) | libraries that wrap C cannot be distributed | a declared native-build contract with no arbitrary scripts |
@@ -36,3 +35,12 @@ would change it. Closing an entry means writing a numbered decision.
 | 29 | Selective imports, re-exports, workspaces | none: qualified names only; local development by path replacements ([IMP-6], [MOD-4]) | verbosity; repeated replacements across local modules | experience with real multi-module projects |
 | 30 | Standard library versioning | supplied by the toolchain at its version; manifests state a minimum language version and nothing is downloaded ([STD-1], [MAN-7]) | library changes tied to compiler releases | the first standard library |
 | 31 | Letters in import paths | lowercase ASCII only ([PATH-2]) | origins with uppercase names need an explicit source | origins where lowercase paths cannot be obtained |
+| 32 | Struct equality and ordering | none; compare fields ([STRUCT-7]) | field-by-field comparisons can miss a field | traits or derived equality; floating point |
+| 33 | Struct patterns and destructuring | not supported; `match` on a struct is an error | nested field reads instead of patterns | a pattern design with exhaustiveness over fields |
+| 34 | C ABI for structs | never cross the boundary; layout internal ([STRUCT-8]) | no interop with C APIs that take or return structs | an explicit C-layout opt-in with per-target by-value/by-pointer rules |
+| 35 | Struct layout optimizations | declaration order, natural padding; `Option`/`Result` as `{ tag, … }`, no niches, `Result` stores both payloads | wasted space | measurements; field reordering or niche tags (allowed: the layout is internal) |
+| 36 | Size limit of struct values ([STRUCT-9]) | at most 16 384 scalar components | rejects legitimate large aggregates | memory-based lowering of struct values in the code generator |
+| 37 | Assigning fields of array elements and temporaries | rejected; replace the element (`a[i] = S { … }`) | awkward updates of arrays of structs | place paths with index and field; an order rule for `a[i].f = v` |
+| 38 | Struct literals in `if`/`while`/`match` heads ([GR-6]) | must be parenthesized (Go/Rust rule) | surprises new readers | reader/agent studies; a literal syntax without the ambiguity |
+| 39 | Empty structs | rejected (like enums without variants) | no marker or unit-like types | a use case (capabilities, typestate) |
+| 40 | Field shorthand and update syntax | not supported | verbose literals | usage evidence |

@@ -2,8 +2,9 @@
 
 - Status: items 1–2 **Accepted — author's direction** (2026-09-25, given in
   conversation and recorded in the control repository as requirements C-2
-  and C-4); items 3–13 **experimental**, proposed for the author's review.
-  Nothing is implemented.
+  and C-4); item 14 **decided by the author** (2026-09-25, pending decision
+  A9 of the control repository); items 3–13 **experimental**, proposed for
+  the author's review. Nothing is implemented.
 - Date: 2026-09-25
 - Spec: `modules.md`. When integrated, it changes `semantics.md` [PRG-1],
   [PRG-2], [DECL-3], [EFF-3], [ABI-1], §12 and `syntax.md` [LEX-5], [LEX-6],
@@ -75,8 +76,8 @@ Experimental (`modules.md`):
     closure in `yxy.lock` (path, version, full revision with algorithm,
     algorithm-tagged content hash, manifest hash, requirements, replacement,
     declared license). Only explicit commands write them, with a reviewable
-    diff; builds are always locked and offline; `--locked` and `--offline`
-    for the dependency commands; replacements only from the main module,
+    diff; builds are always locked; `--locked` and `--offline` for the
+    dependency commands; replacements only from the main module,
     recorded, never inherited; private patterns applied before the first
     request; no fallback after authentication or integrity failures;
     checksums prove identity, not safety.
@@ -88,6 +89,15 @@ Experimental (`modules.md`):
 13. **Grammar** (`modules.md` §9): `package`, `import`, `pub`, `as` become
     keywords, `module` reserved; import paths are quoted literals valid only
     after `import`; qualified names in types, calls and patterns.
+
+Author's decision (2026-09-25):
+
+14. **Builds obtain pinned content** ([DEP-9]): a build may download content
+    the lock pins and that is missing locally — only the locked revision,
+    verified against the locked content hash before use, reported per
+    module. It never selects versions, requests anything the lock does not
+    pin, writes the manifest or the lock, or falls back to another source.
+    `--offline` forbids every request.
 
 ## Alternatives
 
@@ -114,8 +124,9 @@ Experimental (`modules.md`):
 - **Version ranges with a constraint solver** (Cargo, npm). Rejected for
   now: a new release can change the result unless a lock intervenes; the
   solver is complex; minimal version selection gives item 3 by construction.
-- **Builds that download pinned content by themselves** (Go, Cargo).
-  Deferred (OPEN #24): convenient, but a build would use the network.
+- **Builds that never use the network**, with an explicit `yxy fetch` before
+  the first build. Rejected by the author (item 14): one more step after
+  every clone; `--offline` and `yxy fetch` keep that mode available.
 
 ## Consequences
 
