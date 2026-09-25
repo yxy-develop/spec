@@ -40,6 +40,6 @@ reopened without the author's request.
   the output region is `@out`.
 - Later decisions of the author (2026-09-25) are recorded in the compiler
   repository: Rust only as bootstrap scaffolding (implementation decision
-  0001); private repositories, BSD 3-Clause license with **Hyz.is** as
+  0001); private repositories, BSD 3-Clause license with **HYZIS - SERVICOS DIGITAIS LTDA - EPP** as
   copyright holder, commits authored by Paulo R. Lima (implementation decision
   0002).
