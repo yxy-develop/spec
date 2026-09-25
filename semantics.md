@@ -10,8 +10,8 @@ compiler's diagnostic codes are listed in the compiler repository
 
 - **[PRG-1]** A program is one source file, which is one module. It starts with
   `module <name>`. Imports are not supported yet.
-- **[PRG-2]** Items are enums and functions. Item names are unique in the
-  module. The prelude names — `bool`, the integer type names, `Option`,
+- **[PRG-2]** Items are enums, structs and functions. Item names are unique in
+  the module. The prelude names — `bool`, the integer type names, `Option`,
   `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and §6.5 — can
   not be redefined, neither as items nor as parameters or local variables.
 - **[PRG-3]** An executable program has `fn main()` (§9). A file without
@@ -26,13 +26,15 @@ compiler's diagnostic codes are listed in the compiler repository
 | `u8 u16 u32 u64 usize` | unsigned integers of that width | anywhere |
 | `()` | the single unit value `()` | anywhere; a function without `-> T` returns `()` |
 | `E` (an `enum`) | one of its variants, written `E.Variant` | anywhere |
+| `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
 | `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
 | `[T; N]` | exactly `N` elements | local variables only, created from a literal (`[a, b]` or `[v; N]`) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
 
-- **[TY-1]** *Value types* are `bool`, the integers, `()`, enums, and `Option`
-  and `Result` of value types. They are copied on assignment and when passed.
+- **[TY-1]** *Value types* are `bool`, the integers, `()`, enums, structs, and
+  `Option` and `Result` of value types. They are copied on assignment, when
+  passed and when returned. Arrays and slices have value-type elements.
 - **[TY-2]** `usize` and `isize` have the pointer width of the target's data
   model: 32 or 64 bits in this version. They are distinct types from `u32`,
   `u64`, `i32` and `i64` on every target. All other integer types have the
@@ -53,15 +55,74 @@ compiler's diagnostic codes are listed in the compiler repository
   silently; an array is read elsewhere through a borrow (`&a`). A `match` does
   not produce arrays or slices.
 
+### 2.1 Structs *(experimental)*
+
+- **[STRUCT-1]** `struct Name { field: Type, ... }` declares a struct with at
+  least one field. Field names are distinct. A field's type is a value type
+  other than an array: an integer, `bool`, `()`, an enum, `Option`/`Result` of
+  value types, or another struct. Arrays, slices and references cannot be
+  fields in this version. Struct names are items ([PRG-2]); fields are not
+  names in scope and may repeat names used elsewhere. Structs have no generic
+  parameters in this version.
+- **[STRUCT-2]** A struct holds its fields inline, so no struct may contain
+  itself — directly, inside `Option` or `Result`, or through other structs;
+  such a struct would have infinite size and is an error.
+- **[STRUCT-3]** A struct literal `Name { f1: e1, f2: e2, ... }` gives **every**
+  field exactly once, in any order. A missing field, a field the struct does
+  not declare, and a field given twice are errors. There are no default
+  values, no field shorthand (`Name { x }`) and no update syntax
+  (`Name { x: 1, ..other }`). Each value is checked against its field's type,
+  from which an integer literal takes its type ([TY-4]).
+- **[STRUCT-4]** `e.f` reads field `f` of any expression `e` of struct type:
+  a variable, a parameter, a call result, an array element, another field
+  (`a.b.c`), a parenthesized literal. Reading a field the struct does not
+  declare is an error. `Option` and `Result` have no fields; they are
+  inspected with `match`.
+- **[STRUCT-5]** `v.f = value` (and `v.f.g = value`, at any depth) assigns one
+  field of a **`mut` local variable** `v`; the other fields keep their values.
+  A field of an immutable variable or of a parameter cannot be assigned. In
+  this version a field of an array element or of a temporary (`make().x`)
+  cannot be assigned either; an array element is replaced as a whole
+  (`a[i] = Point { ... }`).
+- **[STRUCT-6]** Structs are values ([TY-1]): declaring, assigning, passing,
+  returning, and storing in `Option`, `Result`, arrays or other structs copy
+  the whole value. There is no aliasing: writing a field through one variable
+  never changes another variable, a caller's argument or a stored copy.
+- **[STRUCT-7]** In this version structs have no equality or ordering
+  operators (`a == b` is an error; compare fields), no methods, no patterns (a
+  `match` whose subject is a struct is an error; an `Option<S>` or
+  `Result<S, E>` is matched as usual and its payload bound to a name), and no
+  C ABI ([ABI-2]). A struct value is never discarded silently ([DECL-5]).
+- **[STRUCT-8]** The **layout** of a struct — its size, alignment and field
+  offsets — is defined by the compiler for the selected target ([TGT-1]),
+  never by the machine the compiler runs on. It is an **internal** layout,
+  not a C ABI and not stable across compiler versions: programs cannot observe
+  it except through tools (`yxy inspect --json` reports it). In the current
+  compiler, fields are laid out in declaration order, each at the next offset
+  that is a multiple of its alignment, and the struct is aligned to its most
+  aligned field and padded to a multiple of that alignment; `bool` and enums
+  take one byte, `()` none, integers their width, aligned as the target's data
+  layout says (64-bit integers are 4-byte aligned on 32-bit x86 Linux and
+  8-byte aligned on the other supported targets; `usize`/`isize` follow
+  [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
+  `Result<T, E>` as `{ tag: u8, ok: T, err: E }`. See
+  `decisions/0012-structs-and-layout.md`.
+- **[STRUCT-9]** *(limit of this version)* A struct has at most 16 384 scalar
+  components, counting the fields of the structs it contains: every integer,
+  `bool`, enum and `()` counts one, and so does the tag of every `Option` and
+  `Result`. Nesting would otherwise let a few declarations describe a value of
+  millions of components (each struct holding two of the previous one). The
+  measure does not depend on the target ([TGT-2]).
+
 ## 3. Names, declarations and mutability
 
 - **[DECL-1]** `name := value` declares an **immutable** local variable.
   `mut name := value` declares a mutable one. `name: T := value` and
   `mut name: T := value` add a type annotation. `_ := value` evaluates and
   discards a value. `let` and `var` do not exist.
-- **[DECL-2]** `place = value` assigns. The place is a `mut` local variable or
-  an element `a[i]` of a `mut` array. Slices are read-only and cannot be
-  reassigned.
+- **[DECL-2]** `place = value` assigns. The place is a `mut` local variable, an
+  element `a[i]` of a `mut` array, or a field `v.f` (at any depth) of a `mut`
+  struct variable ([STRUCT-5]). Slices are read-only and cannot be reassigned.
 - **[DECL-3]** Blocks (`{ … }` of `if`, `while` and match arms) open scopes.
   **Shadowing is not allowed**: a name cannot be declared while another
   declaration with the same name is visible in the function, and a local or a
@@ -167,6 +228,13 @@ operation or call. `&&` and `||` evaluate their right operand only when needed.
   assigned.
 - **[ORD-4]** `[value; N]` evaluates `value` exactly once, also when `N` is 0,
   and copies it into every element.
+- **[ORD-5]** A struct literal evaluates its field values in the order they
+  are **written**, not the order the fields are declared, each completely,
+  before the struct value exists. A trap, or a `?` that returns, in one field
+  value prevents the evaluation of the fields written after it.
+- **[ORD-6]** `v.f = value` evaluates `value`, then stores it into the field;
+  `value` sees the contents of `v` before the assignment. Likewise a literal
+  assigned to `v` may read `v` (`p = Point { x: p.y, y: p.x }` swaps).
 
 ### 6.2 Integer arithmetic
 
@@ -194,7 +262,8 @@ hold in every build mode; there is no unchecked release mode.
   types and logical for unsigned types. Both operands have the same type.
 - **[NUM-4]** `& | ^` operate on the two's-complement bits and never trap.
 - **[NUM-5]** Comparisons compare mathematical values. `==` and `!=` also apply
-  to `bool` and enums; `Option` and `Result` are inspected with `match`.
+  to `bool` and enums; `Option` and `Result` are inspected with `match`;
+  structs have no comparison operators ([STRUCT-7]).
 
 ### 6.3 Traps
 
@@ -273,9 +342,9 @@ Static effect checking is not an operating-system sandbox.
   defined outside Yxy. `export fn` defines a Yxy function callable from C under
   its own name. All other functions are internal to the program.
 - **[ABI-2]** Only integers and `bool` cross the boundary (and `()` as a return
-  type). Slices, enums, `Option` and `Result` do not, because their layout is
-  not a stable ABI. Integers and `bool` narrower than 32 bits are extended by
-  the caller, as the target ABI requires.
+  type). Slices, enums, structs, `Option` and `Result` do not, because their
+  layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
+  32 bits are extended by the caller, as the target ABI requires.
 - **[ABI-3]** Symbols the generated code refers to — `main`, `write`, `_exit` —,
   names starting with `yxy_rt_` and names starting with `__` (reserved for the C
   implementation, such as the stack probe `__chkstk_darwin`) cannot be `extern`
@@ -284,9 +353,9 @@ Static effect checking is not an operating-system sandbox.
 ## 9. Targets
 
 - **[TGT-1]** A program is compiled for one target, chosen explicitly
-  (default: the host). The target fixes the data model ([TY-2]), the generated
-  code and the runtime; it does not change syntax, names, other types, effects
-  or cells.
+  (default: the host). The target fixes the data model ([TY-2]), the internal
+  layout of structs ([STRUCT-8]), the generated code and the runtime; it does
+  not change syntax, names, other types, effects or cells.
 - **[TGT-2]** A program's validity depends on the target only through the
   range of `usize`/`isize` values (for example, the literal `4294967296` does
   not fit `usize` on a 32-bit target) — never through conversion rules
@@ -308,11 +377,14 @@ Static effect checking is not an operating-system sandbox.
 
 ## 12. Outside this version
 
-Rejected with a diagnostic, never ignored: `when`, structs, enum payloads,
+Rejected with a diagnostic, never ignored: `when`, enum payloads,
 user-defined generics, traits, closures, function values, method calls, `for`,
 `loop`, `break`, `continue`, imports and modules, `pub`, `unsafe`, `&mut`,
 references other than slices, arrays as parameters or return values, nested
 cells, `if` as an expression, strings, characters, floating point, 128-bit
 integers, concurrency (`par`, `async`), casts (`as`), block comments, generic
 enums, mutable slices, enums without variants and enums with more than 256
-variants.
+variants; for structs: generic structs, structs without fields, arrays and
+slices as fields, recursive structs, structs beyond [STRUCT-9], equality,
+patterns, methods, field shorthand, update syntax, fields of array elements or
+temporaries as assignment targets, and structs at the C boundary.

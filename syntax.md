@@ -32,11 +32,11 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
 - **[LEX-4]** `IDENT = [A-Za-z_][A-Za-z0-9_]*`. Identifiers are ASCII in this
   version; a letter outside ASCII in an identifier is an error. A lone `_` is
   not an identifier: it is the wildcard/discard token.
-- **[LEX-5]** Keywords: `module enum fn extern export effects mut require else
-  return if while match true false`.
+- **[LEX-5]** Keywords: `module enum struct fn extern export effects mut
+  require else return if while match true false`.
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `as async await
   break const continue defer dyn for impl import in loop par pub self static
-  struct trait type unsafe use when where yield`.
+  trait type unsafe use when where yield`.
 - **[LEX-7]** `let` and `var` are identifiers, but a statement that starts with
   `let name` or `var name` is rejected with a note pointing to `:=`.
 - **[LEX-8]** Conventions: `snake_case` for functions, variables and modules;
@@ -99,22 +99,29 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   an `if`.
 - **[NL-5]** The parts of a function signature may be on separate lines:
   `)`, `-> Type`, `effects { ... }` and the body `{`.
-- **[NL-6]** `NL` is ignored around items, enum variants, match arms and region
-  headers, and inside the braces of `effects { ... }`.
+- **[NL-6]** `NL` is ignored around items, enum variants, struct fields (in
+  declarations and in literals), match arms and region headers, and inside the
+  braces of `effects { ... }`. Inside the braces of a struct literal, `NL` is
+  significant again even when the literal is inside `( )` or `[ ]`; it
+  separates fields like `,`.
 - **[NL-7]** A region header may be followed by a statement on the same line
   (compact form) or by statements on the following lines (multi-line form).
   A new region always starts on its own line.
 - **[NL-8]** The `{` of `if`, `while` and `match` is on the same line as the
-  end of the condition or subject.
+  end of the condition or subject. (A struct literal in that position is
+  parenthesized: [GR-6].)
 
 ## 3. Grammar
 
 ```ebnf
 module      = "module" IDENT NL { item } ;
-item        = enum_decl | fn_decl ;
+item        = enum_decl | struct_decl | fn_decl ;
 
 enum_decl   = "enum" IDENT "{" [ variant { ( "," | NL ) variant } [ "," ] ] "}" NL ;
 variant     = IDENT ;
+
+struct_decl = "struct" IDENT "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
+field       = IDENT ":" type ;
 
 fn_decl     = [ "export" | "extern" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
               effects [ body ] NL ;
@@ -135,11 +142,12 @@ stmt        = ( decl | assign | require | return | if | while | expr ) ( NL | (*
 decl        = [ "mut" ] IDENT [ ":" type ] ":=" expr
             | "_" ":=" expr ;
 assign      = place "=" expr ;
-place       = IDENT | IDENT "[" expr "]" ;
+place       = IDENT | IDENT "[" expr "]" | IDENT "." IDENT { "." IDENT } ;
 require     = "require" expr "else" expr ;
 return      = "return" [ expr ] ;
-if          = "if" expr block [ "else" ( block | if ) ] ;
-while       = "while" expr block ;
+if          = "if" head block [ "else" ( block | if ) ] ;
+while       = "while" head block ;
+head        = expr ;              (* no unparenthesized struct literal: [GR-6] *)
 
 type        = IDENT [ "<" type { "," type } ">" ]
             | "[" type ";" INT "]"
@@ -156,8 +164,11 @@ primary     = INT | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" INT "]"
+            | struct_lit
             | match ;
-match       = "match" expr "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
+struct_lit  = IDENT "{" [ field_init { ( "," | NL ) field_init } [ "," ] ] "}" ;
+field_init  = IDENT ":" expr ;
+match       = "match" head "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
 arm         = pattern "=>" ( expr | block ) ;
 pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
             | IDENT                                  (* binding, or `None` *)
@@ -176,12 +187,35 @@ pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
   parentheses an expression chains at most 4096 binary operators, and at most
   4096 postfix operators. Deeper input is rejected with a diagnostic instead of
   exhausting the compiler's resources.
+- **[GR-6]** *(experimental)* `IDENT "{"` starts a struct literal, except in a
+  `head`: the condition of `if` (also after `else`) and `while`, and the
+  subject of `match`, outside any `( )`, `[ ]` or `{ }` nested in it. There the
+  `{` belongs to the statement (its block, or the arms of `match`), so a struct
+  literal is written in parentheses:
+
+  ```yxy
+  if (Point { x: 0, y: 0 }).x == p.x {         // valid
+  if distance(Point { x: 0, y: 0 }, p) > 3 {   // valid: inside a call's ( )
+  if Point { x: 0, y: 0 }.x == p.x {           // error: needs parentheses
+  ```
+
+  When an unparenthesized struct literal in a head is followed by an operator,
+  `.`, `?`, `[` or `{`, the compiler reports that the literal needs
+  parentheses (and offers them as a mechanical fix) instead of reporting a
+  malformed block. `yxy fmt` always writes a struct literal in a head inside
+  parentheses. The rule is Go's rule for composite literals and Rust's for
+  struct expressions; see `decisions/0012-structs-and-layout.md`.
+- **[GR-7]** `.` followed by a name is a field access (`p.x`, `a.b.c`), the
+  length of an array or slice (`s.len`), or a variant (`Enum.Variant`);
+  which one is decided by what precedes the `.` (`semantics.md` §2.1).
+  Struct literals have no field shorthand (`Point { x, y }`) and no update
+  syntax (`Point { x: 1, ..p }`).
 
 ## 4. Operators
 
 | Precedence (high → low) | Operators | Associativity |
 |---|---|---|
-| 11 | postfix: call, `[i]`, `.name`, `?` | left |
+| 11 | postfix: call, `[i]`, `.name` (field, `.len`, variant), `?` | left |
 | 10 | prefix: `-` `!` `&` | right |
 | 9 | `*` `/` `%` | left |
 | 8 | `+` `-` | left |
