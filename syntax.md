@@ -22,7 +22,8 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
 - **[LEX-3a]** These characters are errors **anywhere** in a file, comments
   included, so that code always reads the way it compiles ("Trojan Source"):
   control characters other than tab, line feed and a carriage return followed
-  by a line feed; DEL; U+0085; U+2028; U+2029; the bidirectional formatting
+  by a line feed; DEL and the C1 controls U+0080–U+009F; U+2028; U+2029; the
+  bidirectional formatting
   characters U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069; and
   U+FEFF anywhere but at the start.
 
@@ -50,7 +51,8 @@ hex     = "0x" hexdigit { [ "_" ] hexdigit } ;
 bin     = "0b" bindigit { [ "_" ] bindigit } ;
 ```
 
-- **[LEX-9]** `_` only separates digits. Leading zeros (`007`), type suffixes
+- **[LEX-9]** A single `_` separates two digits (`1_000`; not `1__000`, `1_`,
+  `0x_1`). Leading zeros (`007`), type suffixes
   (`10u8`) and values above 2^128 − 1 are errors. There is no octal.
 - **[LEX-10]** An integer literal has no type of its own: its type comes from
   context (see `semantics.md` [TY-4]).
@@ -155,7 +157,7 @@ primary     = INT | "true" | "false" | IDENT | HOLE
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" INT "]"
             | match ;
-match       = "match" expr "{" { arm ( "," | NL ) } "}" ;
+match       = "match" expr "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
 arm         = pattern "=>" ( expr | block ) ;
 pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
             | IDENT                                  (* binding, or `None` *)
@@ -169,9 +171,10 @@ pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
   ordinary statements, or inside nested blocks, are errors.
 - **[GR-3]** `if` is a statement, not an expression. `match` is an expression.
 - **[GR-4]** Grouping parentheses carry no meaning beyond grouping.
-- **[GR-5]** Limits: nesting of expressions, blocks, `else if` links, types and
-  patterns is at most 256 levels; one expression chains at most 4096 binary or
-  postfix operators. Deeper input is rejected with a diagnostic instead of
+- **[GR-5]** Limits: the **combined** nesting depth of expressions, blocks,
+  `else if` links, types and patterns is at most 256 levels; at one level of
+  parentheses an expression chains at most 4096 binary operators, and at most
+  4096 postfix operators. Deeper input is rejected with a diagnostic instead of
   exhausting the compiler's resources.
 
 ## 4. Operators

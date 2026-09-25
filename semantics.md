@@ -13,7 +13,7 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[PRG-2]** Items are enums and functions. Item names are unique in the
   module. The prelude names — `bool`, the integer type names, `Option`,
   `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and §6.5 — can
-  not be redefined.
+  not be redefined, neither as items nor as parameters or local variables.
 - **[PRG-3]** An executable program has `fn main()` (§9). A file without
   `main` can be compiled to an object and linked with other code.
 
@@ -35,8 +35,9 @@ compiler's diagnostic codes are listed in the compiler repository
   and `Result` of value types. They are copied on assignment and when passed.
 - **[TY-2]** `usize` and `isize` are 64 bits wide on the only supported target
   (aarch64-apple-darwin). They are distinct types from `u64` and `i64`.
-- **[TY-3]** Enum variants carry no data in this version. `Option` and `Result`
-  are known to the compiler; user-defined generics do not exist yet.
+- **[TY-3]** Enum variants carry no data in this version, and an enum has
+  between 1 and 256 variants. `Option` and `Result` are known to the compiler;
+  user-defined generics do not exist yet.
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
@@ -61,8 +62,8 @@ compiler's diagnostic codes are listed in the compiler repository
   reassigned.
 - **[DECL-3]** Blocks (`{ … }` of `if`, `while` and match arms) open scopes.
   **Shadowing is not allowed**: a name cannot be declared while another
-  declaration with the same name is visible in the function, and a local cannot
-  take the name of an item.
+  declaration with the same name is visible in the function, and a local or a
+  parameter cannot take the name of an item.
 - **[DECL-4]** The regions of a cell form one sequential scope: a name declared
   in a region is visible in the following regions, from its declaration on.
 - **[DECL-5]** Every value is used explicitly: an expression statement whose
@@ -94,6 +95,17 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[FN-2]** A function whose return type is not `()` must return on every path.
   Statements that can never run (after a `return`, or regions after one that
   always returns) are errors.
+- **[FN-3]** An expression that never produces a value (a `match` whose arms
+  all return) can only be used as a statement; binding it, passing it or
+  returning it is an error.
+- **[MATCH-1]** A `match` covers every value of the matched type; otherwise it
+  is an error that names one value not covered. Integer matches need a final
+  `_` arm.
+- **[MATCH-2]** An arm that can never match, because earlier arms cover every
+  value it matches, is an error.
+- **[MATCH-3]** Without an expected type, the type of a `match` comes from its
+  arms: an arm whose value needs a type from context (an integer literal,
+  `None`) takes it from the other arms, whatever their order.
 - **[CELL-1]** A **cell** is a function body written as regions. In this version
   a cell is the whole body. Regions appear in this order, each optional:
 
@@ -246,9 +258,10 @@ Static effect checking is not an operating-system sandbox.
   type). Slices, enums, `Option` and `Result` do not, because their layout is
   not a stable ABI. Integers and `bool` narrower than 32 bits are extended by
   the caller, as the target ABI requires.
-- **[ABI-3]** The names `main`, `write`, `abort` and names starting with
-  `yxy_rt_` are reserved for the runtime and cannot be `extern` or `export`
-  symbols. Unwinding across the boundary does not exist.
+- **[ABI-3]** Symbols the generated code refers to — `main`, `write`, `_exit` —,
+  names starting with `yxy_rt_` and names starting with `__` (reserved for the C
+  implementation, such as the stack probe `__chkstk_darwin`) cannot be `extern`
+  or `export` symbols. Unwinding across the boundary does not exist.
 
 ## 9. Entry point
 
@@ -270,4 +283,6 @@ user-defined generics, traits, closures, function values, method calls, `for`,
 `loop`, `break`, `continue`, imports and modules, `pub`, `unsafe`, `&mut`,
 references other than slices, arrays as parameters or return values, nested
 cells, `if` as an expression, strings, characters, floating point, 128-bit
-integers, concurrency (`par`, `async`), casts (`as`) and block comments.
+integers, concurrency (`par`, `async`), casts (`as`), block comments, generic
+enums, mutable slices, enums without variants and enums with more than 256
+variants.

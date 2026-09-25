@@ -19,6 +19,13 @@
    until copies can be made explicit and traceable.
 4. A bare name in a pattern that equals a variant of the matched enum is an
    error instead of a binding that silently matches everything.
+5. Enums have between 1 and 256 variants in this version (the internal tag is
+   one byte). Parameters follow the same naming rules as local variables.
+6. An expression that never produces a value can only be a statement.
+
+Items 5 and 6 come from an adversarial review of the compiler on 2026-09-25,
+which found that a 257th variant compared equal to the first in native code,
+and that a parameter named `None` silently changed what `None` meant.
 
 ## What could change it
 

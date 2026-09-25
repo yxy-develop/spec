@@ -18,3 +18,4 @@ would change it. Closing an entry means writing a numbered decision.
 | 11 | Trap mechanism | message + exit status 101 | debuggers do not stop at the check | a debugger-friendly build option |
 | 12 | Concurrency | not supported | — | structured concurrency design (milestone 0.5) |
 | 13 | Saturating arithmetic | not provided | — | a use case |
+| 14 | Enums with more than 256 variants | rejected | large generated enums | a wider tag, chosen by variant count |
