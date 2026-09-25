@@ -276,16 +276,41 @@ hold in every build mode; there is no unchecked release mode.
 
 ### 6.3 Traps
 
-- **[TRAP-1]** A trap writes one line to standard error,
-  `yxy: trap: <kind> at <file>:<line>:<column>`, and ends the process with exit
-  status **101**. It runs no cleanup and is not recoverable. Output written
-  before the trap is kept (the test hooks write without buffering).
+- **[TRAP-1]** A trap writes one report to standard error and ends the
+  process with exit status **101**. The report names the kind of failure (the
+  table of §6.2) and the position of the checked operation,
+  `<file>:<line>:<column>`; by default it is one line of text,
+  `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
+  and site are experimental, [TRAP-3])*. It runs no cleanup and is not
+  recoverable. Output written before the trap is kept (the test hooks write
+  without buffering).
 - **[TRAP-2]** Not a trap in this version: stack exhaustion from deep recursion
   or large arrays, and non-termination. The generated code requests stack
   probes, as clang does for C on this target, so that a large frame touches the
   guard page and the operating system ends the process instead of memory being
   overwritten. This is verified by inspecting the generated code; no test
   exhausts the stack yet.
+- **[TRAP-3]** *(experimental)* Every failure this specification defines as a
+  trap has defined behaviour up to the point where it is reported: the check
+  comes before the operation it guards, and the compiler never turns the
+  failing operation into undefined behaviour of its backend ahead of the check
+  (for example by declaring that an addition cannot overflow or that an index
+  is in bounds). Optimization may not remove a check whose failure is
+  possible, move it after effects that follow it in evaluation order ([ORD-1]
+  to [ORD-6]), or merge the reports of two checks. The report carries:
+  - a **stable code** for the kind of failure, which is never reused for
+    another kind;
+  - the **site**: a number that identifies the check within the program, the
+    same for a given source and compiler whatever the optimization level or
+    the target;
+  - the **source position** of the checked operation (file, line, column).
+
+  The report has a human form and a structured (JSON) form carrying the same
+  values, selected by the environment of the running program; their exact
+  text, the codes and the numbering of sites are the compiler's contract,
+  documented in the compiler repository (`docs/diagnostics.md`), like its
+  diagnostic codes. Symbols that the hosted runtime uses to produce the report
+  (`getenv`, besides `write` and `_exit`) are reserved as in [ABI-3].
 
 ### 6.4 Explicit arithmetic
 
@@ -354,10 +379,11 @@ Static effect checking is not an operating-system sandbox.
   type). Slices, enums, structs, `Option` and `Result` do not, because their
   layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
   32 bits are extended by the caller, as the target ABI requires.
-- **[ABI-3]** Symbols the generated code refers to — `main`, `write`, `_exit` —,
-  names starting with `yxy_rt_` and names starting with `__` (reserved for the C
-  implementation, such as the stack probe `__chkstk_darwin`) cannot be `extern`
-  or `export` symbols. Unwinding across the boundary does not exist.
+- **[ABI-3]** Symbols the generated code refers to — `main`, `write`, `_exit`,
+  `getenv` —, names starting with `yxy_rt_` and names starting with `__`
+  (reserved for the C implementation, such as the stack probe
+  `__chkstk_darwin`) cannot be `extern` or `export` symbols. Unwinding across
+  the boundary does not exist.
 
 ## 9. Targets
 

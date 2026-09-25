@@ -28,8 +28,12 @@ an error or absence; wrapping and saturation explicit.
    are no implicit conversions. `widen(x)` converts only when every value fits
    (checked at compile time); `checked_convert(x)` returns `Option` (checked at
    run time). There is no truncating cast.
-5. A trap writes `yxy: trap: <kind> at <file>:<line>:<column>` to standard
-   error and exits with status 101, without cleanup.
+5. A trap writes one report to standard error and exits with status 101,
+   without cleanup. Since 2026-09-25 the report carries a stable code, the
+   site of the check and the source position, as a line of text or, when the
+   program's environment asks for it, one JSON line ([TRAP-1], [TRAP-3];
+   compiler implementation decision 0005). Before that it was
+   `yxy: trap: <kind> at <file>:<line>:<column>`.
 
 ## Alternatives
 
