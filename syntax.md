@@ -206,7 +206,10 @@ pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
   parentheses (and offers them as a mechanical fix) instead of reporting a
   malformed block. `yxy fmt` always writes a struct literal in a head inside
   parentheses. The rule is Go's rule for composite literals and Rust's for
-  struct expressions; see `decisions/0012-structs-and-layout.md`.
+  struct expressions; see `decisions/0012-structs-and-layout.md`. A literal
+  in a head that is nested inside another such literal (in the subject of a
+  `match` within a field value) is reported too; the fix of the outer literal
+  already includes the inner one.
 - **[GR-7]** `.` followed by a name is a field access (`p.x`, `a.b.c`), the
   length of an array or slice (`s.len`), or a variant (`Enum.Variant`);
   which one is decided by what precedes the `.` (`semantics.md` §2.1).

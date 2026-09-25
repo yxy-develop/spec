@@ -30,7 +30,7 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
    arrays; slices and references are not fields in this version; a struct
    that contains itself (directly, inside `Option`/`Result`, or through other
    structs) is an error; a struct has at least one field and, in this
-   version, at most 16 384 scalar components counting nested structs (see
+   version, at most 16 384 scalar components and 256 levels of nesting (see
    below).
 2. **Value semantics.** Structs are copied on declaration, assignment,
    passing, returning and storing. There is no aliasing. Fields are read from
@@ -60,14 +60,18 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
    layout is **not** a C ABI promise and may change between compiler
    versions; it is compared with clang's layout of equivalent C structs only
    as independent evidence that the computation is right.
-7. **A size limit for this version.** Because a struct can contain two
-   copies of another, a handful of declarations can describe a value with
-   millions of components; the current code generator hands struct values to
-   LLVM as first-class aggregates, whose compile time grows faster than
-   linearly with the number of components (measured: 16 384 `u64` fields,
-   1.2 s at `-O0`). A struct therefore has at most 16 384 scalar components.
-   The measure counts components, not bytes, so the same program is valid on
-   every target.
+7. **Limits for this version.** Because a struct can contain two copies of
+   another, a handful of declarations can describe a value with millions of
+   components, and a chain of declarations can nest structs arbitrarily deep.
+   A struct, and any `Option`/`Result` type, has at most 16 384 scalar
+   components and 256 levels of nesting. The code generator keeps struct
+   values (and `Option`/`Result` values holding a struct) in memory and copies
+   them with `memcpy`, reading and writing a field of a place alone; on the
+   development host the worst measured programs at the limit build in
+   1.5–3.7 s at `-O2` (before that lowering, 1 024 fields took 14.5 s and an
+   `Option` of a 4 096-field struct 71 s and 15 GB). The measures count
+   components and levels, not bytes, so the same program is valid on every
+   target.
 
 ## Alternatives
 
@@ -101,8 +105,9 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
 - **A limit in bytes** (for example the largest object of a 32-bit target):
   the limit would depend on the target's alignments, and a struct of `()`
   fields has no bytes but still costs the code generator per component.
-- **No limit.** Rejected while struct values are first-class LLVM aggregates:
-  a few lines could make `yxy build` run for hours.
+- **No limit.** Rejected: nesting makes the number of components exponential
+  in the size of the source, and a chain of 20 000 nested declarations crashed
+  clang (1 000 000 overflowed the compiler's own stack) before the depth limit.
 
 ## What could change it
 
@@ -114,7 +119,7 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
 - Patterns: destructuring structs in `match` and declarations.
 - Layout optimizations (field reordering, niche tags for `Option`), allowed
   because the layout is internal.
-- Lowering struct values through memory (copies, pointers to the result)
-  instead of LLVM aggregates, which would allow raising or removing the limit
-  of item 7.
+- Measurements on real programs, or a code generator that no longer walks
+  every component of a copied value, which would allow raising the limits of
+  item 7.
 - Evidence that the parenthesized condition rule confuses readers or agents.

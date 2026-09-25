@@ -39,7 +39,7 @@ would change it. Closing an entry means writing a numbered decision.
 | 33 | Struct patterns and destructuring | not supported; `match` on a struct is an error | nested field reads instead of patterns | a pattern design with exhaustiveness over fields |
 | 34 | C ABI for structs | never cross the boundary; layout internal ([STRUCT-8]) | no interop with C APIs that take or return structs | an explicit C-layout opt-in with per-target by-value/by-pointer rules |
 | 35 | Struct layout optimizations | declaration order, natural padding; `Option`/`Result` as `{ tag, … }`, no niches, `Result` stores both payloads | wasted space | measurements; field reordering or niche tags (allowed: the layout is internal) |
-| 36 | Size limit of struct values ([STRUCT-9]) | at most 16 384 scalar components | rejects legitimate large aggregates | memory-based lowering of struct values in the code generator |
+| 36 | Size limits of value types ([STRUCT-9]) | at most 16 384 scalar components and 256 levels of nesting per struct, `Option` or `Result` type | rejects legitimate large aggregates | measurements on real programs; code generation whose cost does not grow with the number of components |
 | 37 | Assigning fields of array elements and temporaries | rejected; replace the element (`a[i] = S { … }`) | awkward updates of arrays of structs | place paths with index and field; an order rule for `a[i].f = v` |
 | 38 | Struct literals in `if`/`while`/`match` heads ([GR-6]) | must be parenthesized (Go/Rust rule) | surprises new readers | reader/agent studies; a literal syntax without the ambiguity |
 | 39 | Empty structs | rejected (like enums without variants) | no marker or unit-like types | a use case (capabilities, typestate) |

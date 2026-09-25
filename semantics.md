@@ -109,12 +109,19 @@ compiler's diagnostic codes are listed in the compiler repository
   [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
   `Result<T, E>` as `{ tag: u8, ok: T, err: E }`. See
   `decisions/0012-structs-and-layout.md`.
-- **[STRUCT-9]** *(limit of this version)* A struct has at most 16 384 scalar
-  components, counting the fields of the structs it contains: every integer,
-  `bool`, enum and `()` counts one, and so does the tag of every `Option` and
-  `Result`. Nesting would otherwise let a few declarations describe a value of
-  millions of components (each struct holding two of the previous one). The
-  measure does not depend on the target ([TGT-2]).
+- **[STRUCT-9]** *(limits of this version)* A value of a struct type, or of an
+  `Option` or `Result` type, has at most 16 384 scalar components and at most
+  256 levels of nesting. Components: every integer, `bool`, enum and `()`
+  counts one, and so does the tag of every `Option` and `Result`, including
+  those inside nested structs. Nesting: each struct, `Option` and `Result`
+  that holds another value inline adds one level (a struct of scalars is one
+  level), consistent with [GR-5]. The limits apply to every struct
+  declaration and to every `Option`/`Result` type a program writes or builds
+  (`Some(v)`); an array counts as its element type, since it is never copied
+  whole ([TY-6]). Without them, a few declarations could describe a value of
+  millions of components (each struct holding two of the previous one) or a
+  chain of structs deep enough to exhaust the tools. Both measures are
+  independent of the target ([TGT-2]).
 
 ## 3. Names, declarations and mutability
 
