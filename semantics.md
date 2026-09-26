@@ -8,16 +8,17 @@ compiler's diagnostic codes are listed in the compiler repository
 
 ## 1. Programs
 
-- **[PRG-1]** A program is one source file, which is one module. It starts with
-  `module <name>`. Imports are not supported yet. Packages, modules and
-  imports are specified, not implemented, in `modules.md` (decision 0011);
-  until they are implemented this rule holds.
+- **[PRG-1]** A program is a package and the packages it imports
+  (`modules.md`). A package is the `.yxy` files of one directory of a module,
+  or one standalone file; each file starts with `package <name>`.
 - **[PRG-2]** Items are enums, structs and functions. Item names are unique in
-  the module. The prelude names — `bool`, the integer type names, `Option`,
-  `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and §6.5 — can
-  not be redefined, neither as items nor as parameters or local variables.
-- **[PRG-3]** An executable program has `fn main()` (§9). A file without
-  `main` can be compiled to an object and linked with other code.
+  the package, across its files (`modules.md` [PKG-4]). The prelude names —
+  `bool`, the integer type names, `Option`, `Result`, `Some`, `None`, `Ok`,
+  `Err`, the operations in §6.4 and §6.5 — can not be redefined, neither as
+  items, import names, parameters or local variables.
+- **[PRG-3]** An executable program has `fn main()` (§10). A package without
+  `main` can be compiled to an object and linked with other code. An
+  executable package cannot be imported (`modules.md` [PKG-8]).
 
 ## 2. Types
 
@@ -56,6 +57,10 @@ compiler's diagnostic codes are listed in the compiler repository
   another array (`b := a`) is not supported yet, so no buffer is ever copied
   silently; an array is read elsewhere through a borrow (`&a`). A `match` does
   not produce arrays or slices.
+- **[TY-7]** An enum or struct is identified by the import path of its
+  package and its name (`modules.md` [VIS-7]): two packages that declare
+  `enum Error` declare two distinct types. Another package's type is written
+  qualified, `pkg.Error`.
 
 ### 2.1 Structs *(experimental)*
 
@@ -135,7 +140,8 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[DECL-3]** Blocks (`{ … }` of `if`, `while` and match arms) open scopes.
   **Shadowing is not allowed**: a name cannot be declared while another
   declaration with the same name is visible in the function, and a local or a
-  parameter cannot take the name of an item.
+  parameter cannot take the name of an item or of an import of its file
+  (`modules.md` [IMP-5]).
 - **[DECL-4]** The regions of a cell form one sequential scope: a name declared
   in a region is visible in the following regions, from its declaration on.
 - **[DECL-5]** Every value is used explicitly: an expression statement whose
@@ -349,6 +355,8 @@ Both operands have the same integer type, taken from them or from context.
   the caller's declared effects. Because the rule uses declared effects, it
   holds through recursion. Where the call appears (which region) does not
   matter: `@effect` grants nothing, and `@eval` may call declared effects.
+  Across packages, an imported function's effects are those of its public
+  signature (`modules.md` [VIS-5]).
 - **[EFF-4]** An `extern fn` must declare `ffi`. The effects of foreign code are
   a **trusted declaration**, not verified; foreign calls are a trust boundary
   and tools report them as such.
@@ -374,7 +382,9 @@ Static effect checking is not an operating-system sandbox.
 
 - **[ABI-1]** `extern fn name(…) -> T effects { ffi }` declares a C function
   defined outside Yxy. `export fn` defines a Yxy function callable from C under
-  its own name. All other functions are internal to the program.
+  its own name. All other functions are internal to the program. `export`
+  names are unique in the whole program, and `extern` declarations of one
+  symbol in different packages must agree (`modules.md` [VIS-8]).
 - **[ABI-2]** Only integers and `bool` cross the boundary (and `()` as a return
   type). Slices, enums, structs, `Option` and `Result` do not, because their
   layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
@@ -414,8 +424,8 @@ Static effect checking is not an operating-system sandbox.
 
 Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
 generics, traits, closures, function values, method calls, `for`, `loop`,
-`break`, `continue`, imports, packages and modules, `pub` (specified in
-`modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
+`break`, `continue`, dependencies on other modules, manifest requirements,
+the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
 arrays as parameters or return values, nested cells, `if` as an expression,
 strings, characters, floating point, 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, generic enums, mutable slices, enums

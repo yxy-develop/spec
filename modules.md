@@ -1,9 +1,10 @@
 # Yxy packages, modules and imports — experimental draft
 
-Status: **experimental and not implemented.** This is the normative draft of
-the package and module system. Until it is implemented, `syntax.md` and
-`semantics.md` remain normative for slice 1, where a program is one file
-([PRG-1]) and the compiler rejects `import` and `pub` (§10).
+Status: **experimental; partly implemented.** This is the normative draft of
+the package and module system. Packages of one module (§1–§5, §9) are
+implemented and integrated into `syntax.md` and `semantics.md`; the manifest
+beyond the module path, the lock, versions, dependencies and the network
+(§6–§8) are not. See "Implementation status" in §10.
 
 Statements marked **(author)** are the author's direction, recorded in
 `decisions/0011-imports-by-origin.md`. **Every other rule in this document is
@@ -58,13 +59,23 @@ The rule this draft is built around is a proposal, not the author's decision
 
 - **[PKG-1]** Inside a module, a package is the set of `.yxy` files located
   directly in one directory. Each subdirectory is a different package. A
-  directory with no `.yxy` file is not a package.
+  directory with no `.yxy` file is not a package. Files whose name starts
+  with `.` or `_` are not part of a package (as in Go; this also leaves out
+  editor and AppleDouble files such as `._main.yxy`). The name of every other
+  `.yxy` file is a valid path element ([PATH-2], [PATH-3]); another name, or
+  a name that is not valid UTF-8, is an error, never skipped silently.
 - **[PKG-2]** Directories whose name starts with `.` or `_`, and directories
   named `testdata`, are excluded: they are not packages and not part of any
   import path. Any other directory that contains `.yxy` files and whose name
   is not a valid path element ([PATH-2], [PATH-3]) is an error when the
-  module is loaded; it is never skipped silently. A subdirectory that has its
-  own `yxy.toml` is another module and is not part of the enclosing one.
+  module is loaded; it is never skipped silently, and neither is a name that
+  is not valid UTF-8. A subdirectory that has its own `yxy.toml` is another
+  module and is not part of the enclosing one. The manifest is recognized
+  only by its exact name, `yxy.toml`, whatever the case rules of the file
+  system. Symbolic links inside a module are not followed: a symbolic link
+  where a package directory or a source file is expected is an error, as in
+  module content ([LOCK-6]), so a package has one location and one
+  identity.
 - **[PKG-3]** Every file of a package starts with the package clause
   `package <name>`, and all files of a package declare the same name. When
   the last element of the package's import path, ignoring a final
@@ -613,15 +624,16 @@ open because it relies on a compatibility promise that nothing checks yet.
 
 ## 9. Proposed grammar additions
 
-To be integrated into `syntax.md` §3 when packages are implemented; the
-first rule replaces `module = "module" IDENT NL { item } ;`.
+Integrated into `syntax.md` §3, where the first rule replaced
+`module = "module" IDENT NL { item } ;`.
 
 ```ebnf
 file        = package_clause { import_decl } { item } ;
 package_clause
             = "package" IDENT NL ;
 import_decl = "import" PATH [ "as" IDENT ] NL ;
-item        = [ "pub" ] ( enum_decl | fn_decl ) ;  (* and struct_decl later *)
+item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl ) ;
+field       = [ "pub" ] IDENT ":" type ;       (* in struct_decl; [VIS-2], OPEN #28 *)
 
 qual_name   = IDENT [ "." IDENT ] ;             (* item, or import.item *)
 
@@ -661,14 +673,31 @@ path_char = "a"…"z" | "0"…"9" | "-" | "." | "_" | "/" ;
 
 ## 10. Out of scope, and the compiler meanwhile
 
-Until the compiler implements this draft:
+### Implementation status
 
-- [PRG-1] holds: a program is one file, which starts with `module <name>`.
-- `import`, `pub`, `as` and `use` remain reserved words, rejected with the
-  "unsupported feature" diagnostic (E0900 in the compiler's
-  `docs/diagnostics.md`). Reserving `package` now is recommended ([MIG-2]).
-- `yxy.toml` and `yxy.lock` are not read, and no dependency command exists;
-  commands without real behaviour keep failing (compiler requirement R38).
+The status of each rule, with its tests, is in the compiler repository
+(`docs/implementation/STATUS.md`, requirements R92–R109, and implementation
+decision 0007). In short, as of 2026-09-26:
+
+- **Implemented** for packages of one module: [MIG-1] (the clause is
+  `package`; `module` is rejected with a mechanical fix; [MIG-2] is past),
+  [PKG-1]–[PKG-8] (with the file names and links of [PKG-1] and [PKG-2]),
+  [MOD-1], [MOD-3], [MAN-7] (this toolchain implements language 0.1), [IMP-1]–[IMP-11],
+  [IMP-13], [IMP-14], [VIS-1]–[VIS-5], [VIS-7], [VIS-8], [PATH-1]–[PATH-5],
+  [STD-1], [STD-3], [STD-4], [INIT-1], the grammar of §9, and the tooling
+  part of [VIS-6] (facts say whether a package declares foreign functions).
+  The provisional field rule of OPEN #28 is implemented: fields are private
+  to their package unless declared `pub`.
+- **Partly**: [IMP-12] — imports of other modules are refused, since
+  dependencies do not exist yet; the note does not show a command, because
+  none exists yet ([DEP-4] asks for one). [MOD-2], [MOD-4]: one module only.
+  `yxy.toml` is fully validated ([MAN-1]–[MAN-7] as far as reading goes), but
+  only its module path and minimum language version are used.
+- **Not implemented**: §6 (manifest requirements, replacements, the lock, the
+  dependency commands and modes), §7 (versions and selection), §8 (targets of
+  the build list), [PATH-6]–[PATH-8], [STD-2].
+  No dependency command exists; commands without real behaviour keep failing
+  (compiler requirement R38).
 
 Outside this draft, for later designs: the package service and its protocol;
 signatures and checksum logs; publishing; retractions and exclusions;

@@ -32,17 +32,19 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
 - **[LEX-4]** `IDENT = [A-Za-z_][A-Za-z0-9_]*`. Identifiers are ASCII in this
   version; a letter outside ASCII in an identifier is an error. A lone `_` is
   not an identifier: it is the wildcard/discard token.
-- **[LEX-5]** Keywords: `module enum struct fn extern export effects mut
-  require else return if while match true false`.
-- **[LEX-6]** Reserved words, rejected as "not supported yet": `as async await
-  break const continue defer dyn for impl import in loop package par pub self
-  static trait type unsafe use when where yield`. Packages, modules and imports
-  are specified, not yet implemented, in `modules.md` (decision 0011); there
-  `package`, `import`, `pub` and `as` become keywords (`modules.md` §9).
+- **[LEX-5]** Keywords: `package import pub as enum struct fn extern export
+  effects mut require else return if while match true false`.
+- **[LEX-6]** Reserved words, rejected as "not supported yet": `async await
+  break const continue defer dyn for impl in loop module par self static trait
+  type unsafe use when where yield`. `module` is rejected with a mechanical fix
+  to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
+  reserved (`modules.md` [IMP-6]).
 - **[LEX-7]** `let` and `var` are identifiers, but a statement that starts with
   `let name` or `var name` is rejected with a note pointing to `:=`.
-- **[LEX-8]** Conventions: `snake_case` for functions, variables and modules;
+- **[LEX-8]** Conventions: `snake_case` for functions, variables and packages;
   `PascalCase` for types and variants. They are documented, not enforced.
+  Import path elements are lowercase, which is enforced (`modules.md`
+  [PATH-2]).
 
 ### 1.3 Literals
 
@@ -59,7 +61,17 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
 - **[LEX-10]** An integer literal has no type of its own: its type comes from
   context (see `semantics.md` [TY-4]).
 - **[LEX-11]** `1.5` is rejected as an unsupported floating-point literal.
-  String (`"..."`) and character (`'x'`) literals are not supported yet.
+  String (`"..."`) and character (`'x'`) literals are not supported yet; a
+  double-quoted literal is valid only as an import path ([LEX-17]).
+- **[LEX-17]** A double-quoted literal is valid only as the path of an import
+  (`modules.md` [IMP-1]): on one line, without escape sequences, printable
+  ASCII only; its content is checked by `modules.md` [PATH-1]–[PATH-5].
+  Anywhere else it is an unsupported string literal ([LEX-11]).
+
+```ebnf
+PATH      = '"' path_char { path_char } '"' ;
+path_char = (* printable ASCII other than '"'; the path is then checked by modules.md [PATH-1]–[PATH-5] *) ;
+```
 
 ### 1.4 Markers and punctuation
 
@@ -105,7 +117,8 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   declarations and in literals), match arms and region headers, and inside the
   braces of `effects { ... }`. Inside the braces of a struct literal, `NL` is
   significant again even when the literal is inside `( )` or `[ ]`; it
-  separates fields like `,`.
+  separates fields like `,`. The package clause and each import end at their
+  line break (`modules.md` §9).
 - **[NL-7]** A region header may be followed by a statement on the same line
   (compact form) or by statements on the following lines (multi-line form).
   A new region always starts on its own line.
@@ -116,14 +129,19 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
 ## 3. Grammar
 
 ```ebnf
-module      = "module" IDENT NL { item } ;
-item        = enum_decl | struct_decl | fn_decl ;
+file        = package_clause { import_decl } { item } ;   (* modules.md §9 *)
+package_clause
+            = "package" IDENT NL ;
+import_decl = "import" PATH [ "as" IDENT ] NL ;
+item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl ) ;
+
+qual_name   = IDENT [ "." IDENT ] ;             (* item, or import.item *)
 
 enum_decl   = "enum" IDENT "{" [ variant { ( "," | NL ) variant } [ "," ] ] "}" NL ;
 variant     = IDENT ;
 
 struct_decl = "struct" IDENT "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
-field       = IDENT ":" type ;
+field       = [ "pub" ] IDENT ":" type ;          (* modules.md [VIS-2], OPEN #28 *)
 
 fn_decl     = [ "export" | "extern" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
               effects [ body ] NL ;
@@ -151,14 +169,14 @@ if          = "if" head block [ "else" ( block | if ) ] ;
 while       = "while" head block ;
 head        = expr ;              (* no unparenthesized struct literal: [GR-6] *)
 
-type        = IDENT [ "<" type { "," type } ">" ]
+type        = qual_name [ "<" type { "," type } ">" ]
             | "[" type ";" INT "]"
             | "&" "[" type "]"
             | "(" ")" ;
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" ) unary | postfix ;
-postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* primary is an IDENT *)
+postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name or import.name *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
@@ -168,18 +186,20 @@ primary     = INT | "true" | "false" | IDENT | HOLE
             | "[" expr ";" INT "]"
             | struct_lit
             | match ;
-struct_lit  = IDENT "{" [ field_init { ( "," | NL ) field_init } [ "," ] ] "}" ;
+struct_lit  = qual_name "{" [ field_init { ( "," | NL ) field_init } [ "," ] ] "}" ;
 field_init  = IDENT ":" expr ;
 match       = "match" head "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
 arm         = pattern "=>" ( expr | block ) ;
 pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
             | IDENT                                  (* binding, or `None` *)
             | IDENT "(" pattern ")"                  (* Some, Ok, Err *)
-            | IDENT "." IDENT ;                      (* Enum.Variant *)
+            | IDENT "." IDENT                        (* Enum.Variant *)
+            | IDENT "." IDENT "." IDENT ;            (* import.Enum.Variant *)
 ```
 
-- **[GR-1]** Only a name can be called: `f(x)`. Method calls (`x.f()`) are not
-  supported.
+- **[GR-1]** Only a name or a qualified name whose first part is an import can
+  be called: `f(x)`, `pkg.f(x)` (`modules.md` [IMP-6]). Method calls (`x.f()`)
+  are not supported.
 - **[GR-2]** A cell occupies the whole function body. Region headers after
   ordinary statements, or inside nested blocks, are errors.
 - **[GR-3]** `if` is a statement, not an expression. `match` is an expression.
@@ -189,7 +209,8 @@ pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
   parentheses an expression chains at most 4096 binary operators, and at most
   4096 postfix operators. Deeper input is rejected with a diagnostic instead of
   exhausting the compiler's resources.
-- **[GR-6]** *(experimental)* `IDENT "{"` starts a struct literal, except in a
+- **[GR-6]** *(experimental)* `IDENT "{"` (or `IDENT "." IDENT "{"`, a struct
+  of an imported package) starts a struct literal, except in a
   `head`: the condition of `if` (also after `else`) and `while`, and the
   subject of `match`, outside any `( )`, `[ ]` or `{ }` nested in it. There the
   `{` belongs to the statement (its block, or the arms of `match`), so a struct
