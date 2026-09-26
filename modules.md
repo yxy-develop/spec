@@ -364,7 +364,8 @@ layouts are illustrative, not final (OPEN #17).
   dependency commands ([DEP-1]). It contains the module path, the minimum
   language version ([MAN-7]), the requirements ([MAN-3]) and — meaningful
   only in the main module — replacements ([MAN-4]), private path patterns
-  ([NET-3]) and explicit sources ([MAN-5]).
+  ([NET-3]) and explicit sources ([MAN-5]); and optionally the module's
+  declared license expression ([LOCK-2] item 6).
 - **[MAN-2]** A manifest never contains credentials, tokens or
   authenticated URLs; they belong to the user's configuration, outside the
   project.
@@ -394,7 +395,7 @@ layouts are illustrative, not final (OPEN #17).
   diagnostic. No toolchain is downloaded or switched automatically.
 
 ```toml
-# yxy.toml (illustrative layout; OPEN #17)
+# yxy.toml (layout of compiler implementation decision 0006; OPEN #17)
 [module]
 path = "github.com/example/inventory"
 yxy = "0.1"
@@ -404,7 +405,7 @@ yxy = "0.1"
 "github.com/example/yxy-bits/v2" = "2.0.1"
 
 [replace]
-"github.com/example/collections" = { path = "../collections" }
+"github.com/example/collections" = { dir = "../collections" }
 
 [private]
 paths = ["git.corp.example/*"]
@@ -432,16 +433,18 @@ paths = ["git.corp.example/*"]
   6. declared metadata such as the license expression, recorded as declared,
      which is not a legal audit.
 
-  It also records the hashes of the manifests read during selection for
-  versions that were not selected, so that the selection can be re-verified
-  without the network.
+  It also records, for versions read during selection but not selected,
+  their manifest hash and their requirements, so that the selection can be
+  recomputed from the lock alone, without the network.
 - **[LOCK-3]** A module's content is every regular file under its root,
   excluding nested modules and version-control metadata, each identified by
   its path relative to the root; Git submodules are not content. The content
   hash covers a canonical, sorted encoding of paths and file digests,
-  independent of archive format, timestamps and file permissions. The exact
-  encoding is open (OPEN #17); every hash names its algorithm (for example
-  `sha256:`), so that the algorithm can be replaced.
+  independent of archive format, timestamps and file permissions. The
+  encoding is `yxy-content-v1` (compiler implementation decision 0006):
+  `sha256` over `yxy-content-v1\n` followed by one `<hex sha256>  <path>\n`
+  line per file, sorted by path bytes. Every hash names its algorithm (for
+  example `sha256:`), so that the algorithm can be replaced.
 - **[LOCK-4]** A content hash proves that the bytes in use are the bytes
   approved when the lock was written. It does not prove that the code is
   safe, correct, licensed as declared, or written by whoever the origin

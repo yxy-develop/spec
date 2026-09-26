@@ -7,7 +7,7 @@ experimental and changes through recorded decisions until 1.0.
 |---|---|
 | `syntax.md` | Lexical structure, newline rules, grammar (EBNF), operators |
 | `semantics.md` | Types, structs, declarations, borrows, cells, evaluation, integer rules, effects, the C boundary |
-| `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental draft, not implemented |
+| `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental; packages of one module implemented, dependencies not yet |
 | `decisions/NNNN-*.md` | Accepted language decisions, with context, alternatives and what could change them |
 | `decisions/OPEN.md` | Open questions with the provisional choice in force |
 
@@ -30,7 +30,8 @@ experimental e muda por decisões registradas até a versão 1.0.
   (`@ctrl <- @eval -> @effect/@out`), avaliação, aritmética inteira, efeitos e
   fronteira com C.
 - `modules.md`: pacotes, módulos, imports, visibilidade, manifesto e lock
-  (rascunho experimental, não implementado).
+  (experimental; pacotes de um módulo já implementados, dependências ainda
+  não).
 - `decisions/`: decisões aceitas e questões abertas.
 
 A especificação descreve a intenção. O que o compilador implementa hoje fica

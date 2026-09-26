@@ -4,7 +4,8 @@
   conversation and recorded in the control repository as requirements C-2
   and C-4); item 14 **decided by the author** (2026-09-25, pending decision
   A9 of the control repository); items 3–13 **experimental**, proposed for
-  the author's review. Nothing is implemented.
+  the author's review. Packages of one module are implemented (compiler
+  implementation decision 0007); dependencies, lock and network are not yet.
 - Date: 2026-09-25
 - Spec: `modules.md`. When integrated, it changes `semantics.md` [PRG-1],
   [PRG-2], [DECL-3], [EFF-3], [ABI-1], §12 and `syntax.md` [LEX-5], [LEX-6],
