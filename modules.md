@@ -697,7 +697,7 @@ path_char = "a"…"z" | "0"…"9" | "-" | "." | "_" | "/" ;
 ### Implementation status
 
 The status of each rule, with its tests, is in the compiler repository
-(`docs/implementation/STATUS.md`, requirements R92–R109 and R200–R214, and
+(`docs/implementation/STATUS.md`, requirements R92–R109 and R200–R216, and
 implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
 
 - **Implemented** for packages of one module: [MIG-1] (the clause is
@@ -720,15 +720,22 @@ implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
   due with the command), [DEP-6] and [DEP-7] for `yxy lock`, [DEP-8],
   [DEP-9], [VER-1], [VER-2], [VER-4], [VER-5], [NET-1]–[NET-4], [NET-6],
   [INIT-3]; `yxy lock` and `yxy fetch`. The paths of modules and imports are
-  checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` trusts the previous
-  lock for identity only (the revision and content hash it pins for a
-  version, [LOCK-5]), and reads every fact from the content at each version's
-  tag ([DEP-2]): a moved tag of a pinned version is refused, never rewritten;
-  `yxy fetch` prepares `yxy lock --offline` ([DEP-7]); the "local store" of [DEP-7] is the toolchain's home, its
-  content store and its repository cache; a nested module or repository is
-  not content, nor a package, by one rule ([PKG-2], [LOCK-3]); and a path of
-  content must also fit under the local store on the platform ([LOCK-6];
-  OPEN #17).
+  checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` treats every
+  version the previous lock records as a pin of its identity ([LOCK-5]): the
+  revision and content hash of a selected module, the manifest hash of a
+  version read but not selected, read from every entry of the lock that reads
+  even when the lock as a whole does not. It never takes a fact from the
+  lock: it reads every fact from the content at each version's tag ([DEP-2]),
+  and a tag or content that contradicts a pin is refused at that entry, never
+  rewritten; removing one entry accepts a new revision for that version
+  alone, and a lock that cannot be read as a lock at all is refused, never
+  recomputed without its pins. Online, the origin names each tag's revision,
+  never a copy in the repository cache ([VER-2], [NET-5]). `yxy fetch`
+  prepares `yxy lock --offline` ([DEP-7]); the "local store" of [DEP-7] is the
+  toolchain's home, its content store and its repository cache; a nested
+  module or repository is not content, nor a package, by one rule ([PKG-2],
+  [LOCK-3]); and a path of content must also fit under the local store on the
+  platform, as the system resolves the store's path ([LOCK-6]; OPEN #17).
 - **Partly**: [DEP-1] and [DEP-3] (`yxy lock` and `yxy fetch` only: `add`,
   `update` and `remove` do not exist yet and keep failing, compiler
   requirement R38; the review of `yxy lock` lists the changes of the build
