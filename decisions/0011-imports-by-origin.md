@@ -10,6 +10,12 @@
 - Spec: `modules.md`. When integrated, it changes `semantics.md` [PRG-1],
   [PRG-2], [DECL-3], [EFF-3], [ABI-1], §12 and `syntax.md` [LEX-5], [LEX-6],
   [LEX-8], [GR-1], §3.
+- Errata (2026-09-27): wording only; no rule changed. `modules.md` [VER-4]
+  and [VER-5] now say explicitly what item 11 implied: majors 0 and 1 have no
+  `/vN` element, so they share one module path and are one module, selected
+  together; the questions of `0.x` versions and of modules reached only
+  through requirements are recorded in `OPEN.md` #19 (architecture audit of
+  2026-09-26, §15, C15a).
 
 ## Context
 

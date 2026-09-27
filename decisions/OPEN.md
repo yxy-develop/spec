@@ -2,8 +2,10 @@
 
 Each entry: the provisional choice in force, its risk, and the evidence that
 would change it. Closing an entry means writing a numbered decision. Numbers
-41 to 43 are held for entries planned elsewhere (the plan of 2026-09-26), so
-the entries after 40 start at 44.
+41 to 43 were held for entries planned elsewhere (the master plan of
+2026-09-26, proposals MP-a1, MP-b2 and MP-c) and were written on 2026-09-27;
+the entries added meanwhile start at 44. Entries 41 to 43 are open questions
+only: no rule of the specification changes with them.
 
 | # | Question | Provisional choice | Risk | What would change it |
 |---|---|---|---|---|
@@ -15,7 +17,7 @@ the entries after 40 start at 44.
 | 6 | Ownership, moves, `&mut`, cleanup order | not supported (all types copy) | memory-safety claims limited to the subset | milestone 0.2 |
 | 7 | Text: bytes, borrowed UTF-8, owned strings | not supported | no text processing | a design separating bytes, code points and graphemes |
 | 8 | Floating point | not supported | no numeric code | a policy for NaN, signed zero, rounding and no fast-math by default |
-| 9 | Effect catalogue and capabilities for `main` | only `ffi`; `main` gets any effect | effects say little yet | the first standard library |
+| 9 | Effect catalogue and capabilities for `main` | only `ffi`; `main` gets any effect; *(experimental)* each candidate concern is classified as a type, a contract, an effect or a capability by the four questions and the tie-break rules of the note below | effects say little yet | the first standard library |
 | 10 | Unicode identifiers | ASCII only | excludes non-English identifiers | UAX #31 policy with confusable detection |
 | 11 | Trap mechanism | message + exit status 101 | debuggers do not stop at the check | a debugger-friendly build option |
 | 12 | Concurrency | not supported | — | structured concurrency design (milestone 0.5) |
@@ -25,7 +27,7 @@ the entries after 40 start at 44.
 | 16 | Package clause | `package <name>` replaced `module <name>` (implemented 2026-09-26; `module` is rejected with a mechanical fix) | every file changes once | author preference for keeping `module` |
 | 17 | Manifest and lock format | the layout of compiler implementation decision 0006: a strict TOML subset; `dir` for local replacements; optional `license` in `[module]`; lock format 1 with `main`, `[require]`, `[replace]`, `[[module]]`, `[[unselected]]` (unselected versions record their requirements); content hash `yxy-content-v1`; limits 20 000 entries, 256 MiB, 1024-byte paths; an unpublished module is required at `0.0.0` and replaced by its directory | early tools bind to an interim format | the first implementation of `lock` and `fetch`; author review |
 | 18 | Major versions | a `/vN` path element for N ≥ 2; majors coexist as distinct modules ([VER-4]) | path changes at every major; repository layout conventions | experience with the first published modules; author preference |
-| 19 | Version selection | minimal version selection, experimental ([VER-5]) | relies on compatibility within a major that nothing checks; no upper bounds; `0.x` modules | breakages in real dependency graphs; a public-interface compatibility checker; author decision |
+| 19 | Version selection | minimal version selection, experimental ([VER-5]); majors 0 and 1 are one module ([VER-4]), so selection moves a build from `0.x` to a later `0.y`, or from 0 to 1, like any higher version, without a warning; the requirements of every module reached count, also those of modules that no package of the build imports | relies on compatibility within a major that nothing checks; no upper bounds; `0.x` modules, which promise nothing ([VER-3]) and are most of a young ecosystem; modules reached only through requirements ("phantom" modules) can raise versions without being used | breakages in real dependency graphs; a public-interface compatibility checker; for `0.x`: a note in the diff of the lock when selection crosses a `0.x` minor or goes from 0 to 1 above someone's minimum, or treating a divergence of `0.x` minors as a conflict until the main module fixes the version; for phantom modules: pruning the graph to the modules the build imports (Go prunes it since go 1.17); author decision |
 | 20 | Trust and signatures | lock hashes only; a first acquisition is trusted when the user accepts the diff ([NET-5]) | a first download is not checked against an independent reference; no author identity | a checksum-log or signature design, together with the service |
 | 21 | Private origins | patterns are path elements or `*` (one whole element), matching every path whose first elements they match; the first element is an origin or `*`; applied before the first request, with no fallback ([NET-3], [NET-4]) | pattern syntax, credential helpers, leaks through name lookups or logs | a design and tests with a private origin |
 | 22 | Index/proxy protocol; repository root of an origin | none: direct access to origins and local directories; root known for some hosts, otherwise an explicit source ([PATH-7], [MAN-5], [NET-2]) | dependence on origin availability; custom domains need an explicit source | the versioned HTTP protocol of the service |
@@ -46,5 +48,54 @@ the entries after 40 start at 44.
 | 38 | Struct literals in `if`/`while`/`match` heads ([GR-6]) | must be parenthesized (Go/Rust rule) | surprises new readers | reader/agent studies; a literal syntax without the ambiguity |
 | 39 | Empty structs | rejected (like enums without variants) | no marker or unit-like types | a use case (capabilities, typestate) |
 | 40 | Field shorthand and update syntax | not supported | verbose literals | usage evidence |
+| 41 | Freestanding profile: trap report and stack exhaustion without an operating system | none: code generation is refused for targets without an operating system (the compiler's `TARGETS.md`); [TRAP-1] and [TRAP-2] describe hosted behaviour only | the `core`/freestanding profile of [STD-2] (`modules.md`) has no trap or stack contract; 32-bit ARM and bare metal stay analysis-only | the author's trap policy (decision A4 of the control repository; #11); a profile design with a trap hook and a stack bound (static bound over a recursion-free call graph, MPU guard or stack-limit registers) |
+| 42 | Size in bytes of a value | no limit in bytes: a value larger than the stack or the address space is accepted and ends the process when its frame is entered ([TRAP-2]) | a program that can never run on a 32-bit target is accepted silently (`[u32; 2000000000]` on i686) | an author decision between a target-dependent limit (it would amend [TGT-2]) and a portable one; measurements |
+| 43 | Optimization of checked operations: literal or as-if reading of [TRAP-3] | literal text; the compiler adds no check transformation of its own (LLVM already computes an operation together with its overflow flag before branching to the trap) | the literal text forbids transformations with the same observable behaviour (block-wise checks with exact redo, vectorized loops); an as-if reading needs an exact list of what is observable: output and foreign calls before the trap, in order; the report (code, site, position); exit status 101; memory reachable by foreign code | a measured optimization that keeps the first failing check, its report and every earlier effect; author decision. Any proposal of code generation that optimizes checks cites this entry |
 | 44 | Names of the C library as `export` symbols; `export` as a boundary | reserved: the hosted runtime's symbols, the C library functions the code generator may call, `__…` and every name starting with `_` ([ABI-3]; decision 0013; reserving every `_…` name, beyond the names the code generator uses, is part of that experimental decision and awaits confirmation) | an `export fn` named like another C library function (`exit`, `malloc`) replaces it for the foreign code and the C runtime of the program, without `ffi`; C11 7.1.3 reserves those names too, so the reservation cites that clause only in part | reserving every external identifier the C standard reserves; an explicit marker or effect for `export`; a checker of symbols at link time; a use of `export` names starting with `_` (then only `_` + uppercase and the names of the implementation) |
 | 45 | Unwinding across the C boundary | a precondition of `ffi`: foreign code never unwinds across Yxy frames, which are compiled as never unwinding; an unwind that reaches the frame of a Yxy function that called foreign code is refused there and the process ends (C++: `std::terminate`), where that frame is on the stack; a `longjmp`, or the end of a thread that does not unwind, is not detected and is outside the guarantees ([ABI-3] (c); decision 0013) | the end of the process is not a trap report ([TRAP-1]); with destructors, a foreign exception or a `longjmp` would skip cleanups | the design of destructors and ownership (#6): a trap report at the boundary, or a declared unwinding contract |
+
+## Note on #9: type, contract, effect or capability *(experimental)*
+
+A research recommendation of the architecture audit of 2026-09-26 (§12b.1.2,
+in the control repository), recorded here as the working criterion for the
+first standard library. It is not a rule of the specification and changes no
+rule; the author may replace it.
+
+For each concern, ask these questions in this order; the first "yes" gives
+its class:
+
+1. Is it a value that the caller receives and can inspect or handle? Then it
+   is a **type** (failure, absence, ownership, mutability, exit status).
+2. Is it a predicate on values that must hold at a point, whose violation
+   becomes a typed failure or a trap? Then it is a **contract** (`require`, a
+   postcondition, a trap check, the obligation of `unsafe`, the order of the
+   regions, a transaction). A contract grants no authority and describes no
+   action.
+3. Can it happen during the call, and must a caller be able to exclude it
+   transitively by reading only the signature? Then it is an **effect**. An
+   effect names the kind of action, never the resource it uses. A name enters
+   the catalogue of the core only if the language itself, or the hosted
+   runtime, mediates the action.
+4. Can two calls with the same effect reach different resources, and does the
+   difference matter (tests, isolation, security)? Then it is a
+   **capability**: a value that carries authority over a concrete resource,
+   obtained from `main` or from another capability, never from a global
+   singleton.
+
+Tie-break rules:
+
+- A concern may have facets in several classes. The primary class is
+  recorded and the others are cited (writing to a file: the capability says
+  which file, the effect `fs` says that the function may touch the file
+  system, the type carries the I/O error in a `Result`).
+- The noise test: adding an effect to a `pub fn` is an incompatible change
+  ([VIS-5], [VER-3]), so an effect that almost every function would declare
+  says nothing and only causes breakage. Before creating an effect, count the
+  signatures of a corpus that would carry it.
+- A "capability of the target" (does the target have a file system, an
+  operating system?) is not a capability: it belongs to a profile or a target
+  ([TGT-1]: the target does not change effects; [STD-2]: a freestanding
+  program imports only `core`).
+- Cost, termination and traps are not effects ([EFF-1]); a predictable cost
+  belongs to a cost report, not to the signature.
+- Ownership stays within types until ownership is designed (#6).

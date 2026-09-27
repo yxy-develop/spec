@@ -369,8 +369,13 @@ Both operands have the same integer type, taken from them or from context.
   not mean that the function cannot trap, always terminates, reads no
   arguments, or costs nothing.
 - **[EFF-2]** Tracked effects in this version: `ffi` — calling code outside
-  Yxy. Other names are errors. The set will grow (for example console, files,
-  network, clock, randomness, allocation) as the standard library appears.
+  Yxy. Other names are errors. The set will grow as the standard library
+  appears. Which concerns become effects is not settled: console, files,
+  network, clock and randomness are candidates, and allocation has facets of
+  an effect, a capability and a type, to be decided with ownership
+  (`decisions/OPEN.md` #6). *(experimental)* The criterion of
+  `decisions/OPEN.md` #9 (type, contract, effect or capability) is applied to
+  each candidate.
 - **[EFF-3]** At every call, the callee's declared effects must be a subset of
   the caller's declared effects. Because the rule uses declared effects, it
   holds through recursion. Where the call appears (which region) does not
@@ -387,14 +392,17 @@ Both operands have the same integer type, taken from them or from context.
   no `unsafe` construct yet. *(experimental)* These guarantees assume that the
   foreign side keeps the contract of the boundary: foreign callers of an
   `export fn` follow the target's C ABI ([ABI-2]); foreign code does not
-  unwind across Yxy frames ([ABI-3]); and the objects and C files linked into
-  the program (`--link`) do not define the symbols reserved in [ABI-3] nor
-  other functions of the C library that the generated code calls. The compiler
-  rejects an `export fn` with a reserved name, but it does not check what the
-  linked objects define. Under these assumptions, the code the compiler
-  generates for operations without a call in the source — copying a struct,
-  filling an array with `[value; N]` — has no effect of its own, also in a
-  function declared `effects {}`.
+  unwind across Yxy frames ([ABI-3] (c)); and the objects and C files linked
+  into the program (`--link`) do not define the C symbols that the generated
+  code calls: the hosted runtime's `write`, `_exit` and `getenv`, and helpers
+  of the C implementation whose names start with `__` ([ABI-3] (a): the stack
+  probe, the arithmetic helpers of 32-bit targets). The code generated to copy
+  a struct or to fill an array with `[value; N]` calls no function that the
+  program or a linked object can define, so a linked object that defines
+  `memcpy` or `memset` does not reach it, and it has no effect of its own,
+  also in a function declared `effects {}`. The compiler rejects an
+  `export fn` with a reserved name, but it does not check what the linked
+  objects define.
 
 | Phenomenon | Classification |
 |---|---|
@@ -446,8 +454,10 @@ Static effect checking is not an operating-system sandbox.
     of these names would replace it for the whole program, or fail at link
     time. An
     `extern fn` may declare them; it only names the C library's function, and
-    calling it is an ordinary `ffi` call. Whether more names of the C library
-    should be reserved is open (`decisions/OPEN.md` #44);
+    calling it is an ordinary `ffi` call. The code generated for copies and
+    fills does not call these functions ([EFF-5]); the reservation is a second
+    defence. Whether more names of the C library should be reserved is open
+    (`decisions/OPEN.md` #44);
   - (c) *(experimental)* unwinding: foreign code must not unwind into or
     across Yxy frames — a C++ exception, a forced unwind (the end or the
     cancellation of a thread where the C library implements it by

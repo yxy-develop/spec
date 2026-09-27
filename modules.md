@@ -579,10 +579,13 @@ license = "BSD-3-Clause"   # declared by the module, not audited
   of public interfaces is future tooling. Versions `0.x.y` promise nothing.
 - **[VER-4]** Major versions coexist. From major 2 on, the module path ends
   with the element `v<N>` (`github.com/example/yxy-bits/v2`), with no leading
-  zero; majors 0 and 1 have no such element. Different majors are different
-  modules, with different import paths, packages and types ([VIS-7]); one
-  build may use several. That element is ignored when deriving a local name
-  ([IMP-3]). Provisional (OPEN #18).
+  zero; majors 0 and 1 have no such element, so they share one module path
+  and are **one module**: versions `0.x.y` and `1.x.y` of it are ordered and
+  selected together ([VER-5]), and a build may move from 0 to 1 like from one
+  minor to the next. Every other major is a different module, with its own
+  import path, packages and types ([VIS-7]); one build may use several. That
+  element is ignored when deriving a local name ([IMP-3]). Provisional
+  (OPEN #18; for `0.x`, OPEN #19).
 - **[VER-5]** Selection is **minimal version selection** (experimental;
   OPEN #19). Each module version requires minimum versions of other modules.
   Walking these requirements from the main module, after replacements, the
@@ -590,8 +593,9 @@ license = "BSD-3-Clause"   # declared by the module, not audited
   the result is deterministic; publishing a new version never changes it, and
   only an explicit update does ([UPD-1]); no constraint solver is needed;
   and the lock can be re-verified from recorded manifests. There is no
-  version conflict to resolve: within a major the highest minimum wins, and
-  different majors are different modules. Requirements between modules may
+  version conflict to resolve: within one module path (one major, or majors
+  0 and 1 together, [VER-4]) the highest minimum wins, and the other majors
+  are different modules. Requirements between modules may
   form cycles; only the package import graph must be acyclic ([IMP-10]).
   Accepted limits: requirements have no upper bounds or exclusions, and a
   release that breaks compatibility within a major breaks its dependents

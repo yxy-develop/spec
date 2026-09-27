@@ -3,9 +3,19 @@
 - Status: Accepted — **experimental** (proposed in the conformance phase that
   follows the architecture audit of 2026-09-26, tasks TASK-20260926-014, 015,
   016, 017 and 024; open to the author's review)
-- Date: 2026-09-26
+- Date: 2026-09-26; item 5 amended 2026-09-27
 - Spec: `semantics.md` [TRAP-1], [EFF-5], [ABI-2], [ABI-3]; `OPEN.md` #44,
-  #45 (numbers 41 to 43 are held for entries planned elsewhere)
+  #45 (numbers 41 to 43 were held for entries planned elsewhere, written on
+  2026-09-27)
+- Amendment (2026-09-27, conformance fix round, experimental): item 5 now
+  names the symbols the assumption of [EFF-5] covers. Once the compiler made
+  copies and fills without any external call (the implementation's R117),
+  "the linked objects do not define other C library functions that the
+  generated code calls" was wider than needed and suggested that a linked
+  `memcpy` could still change what code without `ffi` does; the assumption is
+  now the hosted runtime's symbols and the `__…` helpers of the C
+  implementation, and [EFF-5] states that copies and fills call nothing a
+  program or a linked object can define. No other item changes.
 
 ## Context
 
@@ -95,10 +105,15 @@ implementation kept, or was wrong for some target:
    declared contract, is decided with destructors (`OPEN.md` #45).
 5. **The assumptions of [EFF-5] are stated.** Its guarantees hold when
    foreign callers follow the C ABI, foreign code does not unwind across Yxy
-   frames, and the linked objects do not define the reserved symbols or other
-   C library functions that the generated code calls. The compiler checks
-   what it can (`export` of reserved names); it does not check linked
-   objects.
+   frames, and the linked objects do not define the C symbols that the
+   generated code calls: the hosted runtime's `write`, `_exit` and `getenv`,
+   and the helpers of the C implementation whose names start with `__` (the
+   stack probe, the arithmetic helpers of 32-bit targets). The code generated
+   to copy or fill memory calls no function that the program or a linked
+   object can define, so a linked `memcpy` or `memset` does not reach it
+   (amended 2026-09-27; before, the assumption also covered "other C library
+   functions that the generated code calls"). The compiler checks what it can
+   (`export` of reserved names); it does not check linked objects.
 6. **One trap report per linked image ([TRAP-1]).** When several threads
    trap at the same time, the first trap of a linked image (an executable or
    a shared library, with every Yxy object linked into it) writes its report

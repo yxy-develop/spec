@@ -3,6 +3,12 @@
 - Status: Accepted — experimental
 - Date: 2026-09-25
 - Spec: `semantics.md` §7, §8
+- Errata (2026-09-27): wording only; no rule changed. [EFF-2] no longer
+  lists allocation among the effects to come: allocation has facets of an
+  effect, a capability and a type, and is decided with ownership
+  (`OPEN.md` #6); the classification criterion of `OPEN.md` #9 (a research
+  recommendation of the architecture audit of 2026-09-26, experimental) is
+  applied to each candidate. `ffi` remains the only tracked effect.
 
 ## Decision
 
