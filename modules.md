@@ -720,9 +720,11 @@ implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
   due with the command), [DEP-6] and [DEP-7] for `yxy lock`, [DEP-8],
   [DEP-9], [VER-1], [VER-2], [VER-4], [VER-5], [NET-1]–[NET-4], [NET-6],
   [INIT-3]; `yxy lock` and `yxy fetch`. The paths of modules and imports are
-  checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` computes the lock
-  from the content at each version's tag, never from the previous lock
-  ([DEP-2]); the "local store" of [DEP-7] is the toolchain's home, its
+  checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` trusts the previous
+  lock for identity only (the revision and content hash it pins for a
+  version, [LOCK-5]), and reads every fact from the content at each version's
+  tag ([DEP-2]): a moved tag of a pinned version is refused, never rewritten;
+  `yxy fetch` prepares `yxy lock --offline` ([DEP-7]); the "local store" of [DEP-7] is the toolchain's home, its
   content store and its repository cache; a nested module or repository is
   not content, nor a package, by one rule ([PKG-2], [LOCK-3]); and a path of
   content must also fit under the local store on the platform ([LOCK-6];
