@@ -203,12 +203,28 @@ pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
             | IDENT "." IDENT "." IDENT ;            (* import.Enum.Variant *)
 ```
 
+Patterns have no other forms in this version: or-patterns (`p | q`), guards
+(`pattern if condition`) and ranges (`a..b`) are open (`decisions/OPEN.md`
+#46), struct patterns too (#33), and an index is one expression, never a
+range (`s[i..j]`, #47). Each is rejected with a diagnostic of its own
+(`semantics.md` §12), also when the pattern goes on over lines (`p` on one
+line, `| q` or `if condition` on the next). A payload that is not used is
+written `_` (`Some(_)`): there are no rest patterns (`Some(..)`), and a
+variant is written with one `.` (`Color.Red`).
+
 - **[GR-1]** Only a name or a qualified name whose first part is an import can
   be called: `f(x)`, `pkg.f(x)` (`modules.md` [IMP-6]). Method calls (`x.f()`)
   are not supported.
 - **[GR-2]** A cell occupies the whole function body. Region headers after
   ordinary statements, or inside nested blocks, are errors.
-- **[GR-3]** `if` is a statement, not an expression. `match` is an expression.
+- **[GR-3]** *(experimental)* `if` is a statement, not an expression.
+  `match` is an expression: a value chosen by a condition is a `match` on it
+  (`match c { true => a, false => b }`). An `if` where a value is expected is
+  rejected with the first sentence of this rule and a note pointing to
+  `match`. Making `if` an expression later would change no valid program,
+  since none has an `if` where a value is expected; making `match` a
+  statement would, and once the language is open that needs the evolution
+  rule of `decisions/OPEN.md` #48.
 - **[GR-4]** Grouping parentheses carry no meaning beyond grouping.
 - **[GR-5]** Limits: the **combined** nesting depth of expressions, blocks,
   `else if` links, types and patterns is at most 256 levels; at one level of

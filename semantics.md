@@ -161,8 +161,17 @@ compiler's diagnostic codes are listed in the compiler repository
   therefore never outlives the array it views. This is a restriction of the
   subset, not a borrow checker; wider borrowing rules are future work.
 - **[REF-3]** `s.len` is the number of **elements** of an array or slice, of
-  type `usize`.
+  type `usize`. In this version `s` names the array or slice: a local
+  variable or a parameter.
 - **[REF-4]** `a[i]` requires `i: usize` and checks `i < len` at run time (§6.1).
+  In this version `a` names the array or slice, as in [REF-3]. The grammar
+  accepts any operand before `[` and `.len`, but `(&a)[0]`, `[1, 2, 3][0]`
+  and `(&a).len` are errors: write `a[0]` and `a.len`, or declare the value
+  first, with its type when it is a literal (`d: [u8; 3] := [1, 2, 3]`,
+  `s := &a`). The index is one expression: there are no sub-slices
+  (`s[i..j]`, `decisions/OPEN.md` #47). This is a restriction of the subset,
+  like [REF-2]: lifting it, with places that carry projections (OPEN #37,
+  #47), changes no valid program.
 - **[REF-5]** All types of this version are copied; there are no move-only
   values yet, so use-after-move cannot occur.
 
@@ -517,7 +526,10 @@ generics, traits, closures, function values, method calls, `for`, `loop`,
 `break`, `continue`, compound assignment (`+=` and the other `op=` forms),
 dependencies on other modules, manifest requirements,
 the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
-arrays as parameters or return values, nested cells, `if` as an expression,
+arrays as parameters or return values, nested cells, `if` as an expression
+([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
+(OPEN #47), indexing or `.len` of an array or slice that is not named
+([REF-3], [REF-4]),
 strings, characters, floating point, 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, generic enums, mutable slices, enums
 without variants and enums with more than 256 variants; for structs: generic
