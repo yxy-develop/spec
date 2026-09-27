@@ -720,7 +720,13 @@ implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
   due with the command), [DEP-6] and [DEP-7] for `yxy lock`, [DEP-8],
   [DEP-9], [VER-1], [VER-2], [VER-4], [VER-5], [NET-1]–[NET-4], [NET-6],
   [INIT-3]; `yxy lock` and `yxy fetch`. The paths of modules and imports are
-  checked by one validator of [PATH-1]–[PATH-5].
+  checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` computes the lock
+  from the content at each version's tag, never from the previous lock
+  ([DEP-2]); the "local store" of [DEP-7] is the toolchain's home, its
+  content store and its repository cache; a nested module or repository is
+  not content, nor a package, by one rule ([PKG-2], [LOCK-3]); and a path of
+  content must also fit under the local store on the platform ([LOCK-6];
+  OPEN #17).
 - **Partly**: [DEP-1] and [DEP-3] (`yxy lock` and `yxy fetch` only: `add`,
   `update` and `remove` do not exist yet and keep failing, compiler
   requirement R38; the review of `yxy lock` lists the changes of the build
