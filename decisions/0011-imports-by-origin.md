@@ -5,7 +5,10 @@
   and C-4); item 14 **decided by the author** (2026-09-25, pending decision
   A9 of the control repository); items 3–13 **experimental**, proposed for
   the author's review. Packages of one module are implemented (compiler
-  implementation decision 0007); dependencies, lock and network are not yet.
+  implementation decision 0007); dependencies from local directories and Git
+  origins, `yxy lock`, `yxy fetch`, `--locked` and `--offline` too (compiler
+  implementation decision 0008, 2026-09-27); `add`, `update`, `remove` and
+  the package service are not.
 - Date: 2026-09-25
 - Spec: `modules.md`. When integrated, it changes `semantics.md` [PRG-1],
   [PRG-2], [DECL-3], [EFF-3], [ABI-1], §12 and `syntax.md` [LEX-5], [LEX-6],
@@ -16,6 +19,24 @@
   together; the questions of `0.x` versions and of modules reached only
   through requirements are recorded in `OPEN.md` #19 (architecture audit of
   2026-09-26, §15, C15a).
+- Amendment (2026-09-27), **author's decision Q2** (2026-09-26, with the
+  reviewer's amendment 4, both recorded in the control repository): the
+  lock records the identity of the resolver that selected its build list,
+  so that a future change of the selection algorithm never pretends to be
+  compatible with an old lock; minimal version selection (item 11) stays
+  experimental, and its comparison with the alternatives comes before the
+  first public release. Text: `modules.md` [LOCK-2] (the identity, and a
+  lock of an unknown resolver refused) and the illustrative lock of §6.2.
+  The name and form of the field (`resolver = "mvs-1"`), its relation to
+  `format`, and a lock without it are the compiler's implementation detail
+  (implementation decisions 0006 and 0008; experimental).
+- Errata (2026-09-27): wording only; no rule changed. [LOCK-3] states that
+  the lock format fixes the content-hash encoding (format 1 uses
+  `yxy-content-v1`; a new encoding needs a new format), which implementation
+  decision 0006 implied (architecture audit of 2026-09-26, §15, e3); [DEP-5]
+  names the reference evaluator (`dev eval`) among the commands that load a
+  module's packages and so use the lock exactly, which the implementation
+  already did (the same audit, "`yxy test`", P4).
 
 ## Context
 
