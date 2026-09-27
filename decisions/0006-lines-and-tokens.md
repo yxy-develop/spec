@@ -14,6 +14,10 @@
 - Tokens use maximal munch, so `<-` is always the region arrow (`a<-b` is an
   error). Control tokens are ASCII. Identifiers are ASCII in this version.
 - `@io` is rejected, with a mechanical fix to `@out`.
+- *(clarification, 2026-09-26)* There is no compound assignment (`+=` and the
+  other `op=` forms) in this version: an assignment is written
+  `x = x + value`. The grammar never had it; `semantics.md` §12 now lists it
+  among the constructs rejected with a diagnostic.
 
 ## Alternatives
 
@@ -23,3 +27,6 @@
   operators that may start statements. Rejected.
 - Unicode identifiers (UAX #31 with NFC). Deferred: needs a policy for
   confusable characters, normalization and symbol mangling.
+- Compound assignment (C, Go, Rust): shorter, but a second spelling of an
+  assignment, and `a[f()] += 1` evaluates its target once where the long form
+  evaluates it twice. Not in this version; usage evidence could bring it.

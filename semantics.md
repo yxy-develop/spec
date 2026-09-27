@@ -196,13 +196,24 @@ compiler's diagnostic codes are listed in the compiler repository
 
   At most one `@ctrl`, `@eval` and `@out`. `@ctrl` takes no arrow; `@eval`
   takes `<-`; `@effect` and `@out` take `->`.
-- **[CELL-2]** *(experimental)* Statements allowed in each region:
-  `@ctrl` — declarations and `require`; `@eval` and `@effect` — declarations,
-  assignments, `if`, `while` and calls; `@out` — declarations, `if`, calls and
-  `return`. Consequently validation (`require`) happens only in `@ctrl`, and an
-  early exit before `@out` happens only through `?`. See
-  `decisions/0004-cell-regions.md` for the alternative (no restriction) and
-  what would change it.
+- **[CELL-2]** *(experimental; the place of `require` is the author's
+  decision A1 of 2026-09-26)* Statements allowed in each region, at any depth
+  (a statement inside an `if` or a `while` follows the rules of its region):
+  `@ctrl` — declarations and `require`; `@eval` — declarations, assignments,
+  `if`, `while`, calls and `require`; `@effect` — declarations, assignments,
+  `if`, `while` and calls; `@out` — declarations, `if`, calls and `return`.
+  A `require` in `@ctrl` validates before the computation (pre-validation); a
+  `require` in `@eval` validates what the statements of `@eval` before it
+  computed (post-validation). It may appear anywhere in `@eval`: statements
+  run in lexical order ([CELL-3]), so it sees exactly the values computed
+  before it, and because `@eval` comes before every effect step and the
+  output, a false `require` in `@eval` prevents them ([CELL-6]).
+  Consequently validation (`require`) happens only in `@ctrl` and `@eval`,
+  before every effect step, and an early exit before `@out` happens only
+  through a false `require` or `?`. The rules hold within a cell, for that
+  function: a function whose body is not a cell, or a function called from
+  `@eval`, is not restricted by them. See `decisions/0004-cell-regions.md` for
+  the alternatives and what would change them.
 - **[CELL-3]** Execution follows the lexical order: control, evaluation, the
   effect steps, output; inside a region, statement order. The compiler does not
   run regions in parallel, speculate calls, move effects before validations or
@@ -215,12 +226,14 @@ compiler's diagnostic codes are listed in the compiler repository
   unchanged from the function, which must return `Result<_, E>` with the **same**
   `E`: errors are never converted implicitly. On `Option<T>` it yields the
   `Some` value or returns `None` from a function returning `Option<_>`.
-- **[CELL-6]** Failures, by region: a false guard in `@ctrl` prevents the
-  evaluation and every effect; a failure in `@eval` prevents the effect steps;
-  a failure in an effect step does **not** undo the actions already performed
-  and prevents the later steps. There is no implicit rollback, retry or
-  exactly-once delivery; transactions and idempotence belong to explicit
-  library contracts.
+- **[CELL-6]** Failures, by region. A false guard in `@ctrl` prevents the
+  evaluation and every later step; the calls made by declarations of `@ctrl`
+  before the guard have already run, with their effects. A failure in `@eval`
+  — a `?` or a false `require` (post-validation, [CELL-2]) — prevents the rest
+  of `@eval`, the effect steps and the output. A failure in an effect step
+  does **not** undo the actions already performed and prevents the later
+  steps. There is no implicit rollback, retry or exactly-once delivery;
+  transactions and idempotence belong to explicit library contracts.
 - **[CELL-7]** `return` leaves the function. `when` (a cell that is skipped when
   its condition is false) is reserved and not supported yet.
 - **[CELL-8]** No value in this version owns a resource, so leaving a function
@@ -289,13 +302,20 @@ hold in every build mode; there is no unchecked release mode.
   `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
   and site are experimental, [TRAP-3])*. It runs no cleanup and is not
   recoverable. Output written before the trap is kept (the test hooks write
-  without buffering).
+  without buffering). *(experimental)* When several threads trap at the same
+  time — threads of foreign code calling `export fn`, the only threads in
+  this version — the traps of one linked image (an executable or a shared
+  library, with every Yxy object linked into it) write one report: the first
+  writes its report and ends the process, and the others write nothing. The
+  scope is the linked image, not the process: Yxy code in two shared
+  libraries of one process forms two images, and each may write one report
+  before the process ends.
 - **[TRAP-2]** Not a trap in this version: stack exhaustion from deep recursion
   or large arrays, and non-termination. The generated code requests stack
   probes, as clang does for C on this target, so that a large frame touches the
   guard page and the operating system ends the process instead of memory being
-  overwritten. This is verified by inspecting the generated code; no test
-  exhausts the stack yet.
+  overwritten. This is verified by a test that exhausts the stack in a child
+  process and by inspecting the generated code.
 - **[TRAP-3]** *(experimental)* Every failure this specification defines as a
   trap has defined behaviour up to the point where it is reported: the check
   comes before the operation it guards, and the compiler never turns the
@@ -364,7 +384,17 @@ Both operands have the same integer type, taken from them or from context.
   code can do anything with the integers it receives, including treating them
   as addresses. The memory-safety guarantees of this specification hold for
   code whose effects exclude `ffi`, and for the Yxy side of every call. There is
-  no `unsafe` construct yet.
+  no `unsafe` construct yet. *(experimental)* These guarantees assume that the
+  foreign side keeps the contract of the boundary: foreign callers of an
+  `export fn` follow the target's C ABI ([ABI-2]); foreign code does not
+  unwind across Yxy frames ([ABI-3]); and the objects and C files linked into
+  the program (`--link`) do not define the symbols reserved in [ABI-3] nor
+  other functions of the C library that the generated code calls. The compiler
+  rejects an `export fn` with a reserved name, but it does not check what the
+  linked objects define. Under these assumptions, the code the compiler
+  generates for operations without a call in the source — copying a struct,
+  filling an array with `[value; N]` — has no effect of its own, also in a
+  function declared `effects {}`.
 
 | Phenomenon | Classification |
 |---|---|
@@ -388,12 +418,56 @@ Static effect checking is not an operating-system sandbox.
 - **[ABI-2]** Only integers and `bool` cross the boundary (and `()` as a return
   type). Slices, enums, structs, `Option` and `Result` do not, because their
   layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
-  32 bits are extended by the caller, as the target ABI requires.
-- **[ABI-3]** Symbols the generated code refers to — `main`, `write`, `_exit`,
-  `getenv` —, names starting with `yxy_rt_` and names starting with `__`
-  (reserved for the C implementation, such as the stack probe
-  `__chkstk_darwin`) cannot be `extern` or `export` symbols. Unwinding across
-  the boundary does not exist.
+  32 bits follow the C ABI of each target, which differ: some make the caller
+  extend them to 32 bits (Apple's ARM64 ABI), some leave the bits beyond the
+  value's width unspecified (the generic AAPCS64). When Yxy passes such a
+  value to C — an argument of an `extern fn`, the result of an `export fn` —
+  it extends it as the target's ABI requires. *(experimental)* When Yxy
+  receives one from C — a parameter of an `export fn`, the result of an
+  `extern fn` — it does not rely on the bits beyond the value's width: the Yxy
+  side normalizes the value at the boundary, so that Yxy code always sees a
+  value of the declared type (an integer in its type's range, a `bool` that is
+  `false` or `true`), on every target, whatever those bits hold.
+- **[ABI-3]** Reserved symbols, the same on every target ([TGT-2]), including
+  a target that never uses a given name:
+  - (a) the symbols of the hosted runtime — `main`, `write`, `_exit`,
+    `getenv` —, names starting with `yxy_rt_`, and names starting with `__`
+    (reserved for the C implementation, such as the stack probe
+    `__chkstk_darwin` and the arithmetic helpers of 32-bit targets) cannot be
+    `extern` or `export` symbols;
+  - (b) *(experimental)* the C library functions that the generated code may
+    call without a call in the source, to copy, fill or compare memory —
+    `memcpy`, `memmove`, `memset`, `memcmp`, `bcmp`, `bzero` and
+    `memset_pattern16` —, and names starting with `_` (C11 7.1.3 reserves
+    them for the C implementation as identifiers with file scope, which an
+    `export` symbol is: `_start`, the entry point of ELF programs,
+    `_mh_execute_header` of Mach-O executables, `_GLOBAL_OFFSET_TABLE_` of
+    32-bit x86 objects), cannot be `export` symbols: an `export fn` with one
+    of these names would replace it for the whole program, or fail at link
+    time. An
+    `extern fn` may declare them; it only names the C library's function, and
+    calling it is an ordinary `ffi` call. Whether more names of the C library
+    should be reserved is open (`decisions/OPEN.md` #44);
+  - (c) *(experimental)* unwinding: foreign code must not unwind into or
+    across Yxy frames — a C++ exception, a forced unwind (the end or the
+    cancellation of a thread where the C library implements it by
+    unwinding), a `longjmp` or any other non-local exit that passes over a
+    Yxy function. This is a precondition of the `ffi` trust boundary
+    ([EFF-4], [EFF-5]), which the compiler relies on: Yxy functions and
+    `extern` declarations are compiled as never unwinding. C++ code called
+    from Yxy catches its exceptions before it returns (for example in a
+    `noexcept` wrapper with `catch (...)`). When the precondition is broken
+    through the platform's unwinder (Itanium C++ ABI), the frame of the Yxy
+    function that called the foreign code refuses the unwind when the
+    unwinder reaches it, and the process ends (for a C++ exception, the C++
+    runtime calls `std::terminate`) instead of skipping Yxy frames; this
+    holds where that frame is on the stack while the foreign code runs. An
+    exit that does not go through the unwinder (a `longjmp`, the end of a
+    thread that does not unwind) is not detected; what it does, like an
+    unwind that no Yxy frame refuses, is outside the guarantees of this
+    specification. Whether the end of the process should become a trap
+    report ([TRAP-1]), or unwinding a declared contract, is decided together
+    with destructors (`decisions/OPEN.md` #45).
 
 ## 9. Targets
 
@@ -416,15 +490,22 @@ Static effect checking is not an operating-system sandbox.
 ## 11. Incomplete programs
 
 - **[HOLE-1]** A typed hole `$` or `$name` stands for a missing expression. The
-  compiler reports it with the type expected at that position, so tools and
-  agents can inspect the gap; `check` and `build` reject any program that still
-  contains a hole.
+  compiler reports each hole with the type expected at that position when the
+  context gives one (and says when it does not), in its human and structured
+  diagnostics; `check` and `build` reject any program that still contains a
+  hole. *(Scope in this version: the expected type is part of the
+  diagnostic's text, not a field of its own, and a program that still contains
+  a hole has no facts (`inspect`) for its other functions either. A
+  structured description of holes for tools and agents — the expected type as
+  data, the names in scope, facts of the rest of the program — is future
+  work.)*
 
 ## 12. Outside this version
 
 Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
 generics, traits, closures, function values, method calls, `for`, `loop`,
-`break`, `continue`, dependencies on other modules, manifest requirements,
+`break`, `continue`, compound assignment (`+=` and the other `op=` forms),
+dependencies on other modules, manifest requirements,
 the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
 arrays as parameters or return values, nested cells, `if` as an expression,
 strings, characters, floating point, 128-bit integers, concurrency (`par`,

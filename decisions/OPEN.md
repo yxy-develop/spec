@@ -1,11 +1,13 @@
 # Open language decisions
 
 Each entry: the provisional choice in force, its risk, and the evidence that
-would change it. Closing an entry means writing a numbered decision.
+would change it. Closing an entry means writing a numbered decision. Numbers
+41 to 43 are held for entries planned elsewhere (the plan of 2026-09-26), so
+the entries after 40 start at 44.
 
 | # | Question | Provisional choice | Risk | What would change it |
 |---|---|---|---|---|
-| 1 | Region statement restrictions ([CELL-2]) | `require` only in `@ctrl`, `return` only in `@out` | invents rules the author did not state | author review; awkward real programs |
+| 1 | Region statement restrictions ([CELL-2]) | `require` in `@ctrl` and, after the computation, in `@eval` (author decision A1, 2026-09-26, experimental); `return` only in `@out`; calls with effects allowed in `@ctrl` | invents rules the author did not state; a call with effects in a declaration of `@ctrl` runs before a false guard ([CELL-6]) | author review; awkward real programs; the alternative that restricts the calls of `@ctrl` to functions without effects, so that a false guard prevents every effect (decision 0004) |
 | 2 | Formatter layout of cells | always multi-line | loses the compact presentation the author also shows | author preference; readability study |
 | 3 | `when` cells | rejected | the pattern is incomplete without it | a design for skipped cells and `Option` results |
 | 4 | Nested cells and block values | not allowed | limits composition | a construct for leaving a nested cell that is not `return` |
@@ -44,3 +46,5 @@ would change it. Closing an entry means writing a numbered decision.
 | 38 | Struct literals in `if`/`while`/`match` heads ([GR-6]) | must be parenthesized (Go/Rust rule) | surprises new readers | reader/agent studies; a literal syntax without the ambiguity |
 | 39 | Empty structs | rejected (like enums without variants) | no marker or unit-like types | a use case (capabilities, typestate) |
 | 40 | Field shorthand and update syntax | not supported | verbose literals | usage evidence |
+| 44 | Names of the C library as `export` symbols; `export` as a boundary | reserved: the hosted runtime's symbols, the C library functions the code generator may call, `__…` and every name starting with `_` ([ABI-3]; decision 0013; reserving every `_…` name, beyond the names the code generator uses, is part of that experimental decision and awaits confirmation) | an `export fn` named like another C library function (`exit`, `malloc`) replaces it for the foreign code and the C runtime of the program, without `ffi`; C11 7.1.3 reserves those names too, so the reservation cites that clause only in part | reserving every external identifier the C standard reserves; an explicit marker or effect for `export`; a checker of symbols at link time; a use of `export` names starting with `_` (then only `_` + uppercase and the names of the implementation) |
+| 45 | Unwinding across the C boundary | a precondition of `ffi`: foreign code never unwinds across Yxy frames, which are compiled as never unwinding; an unwind that reaches the frame of a Yxy function that called foreign code is refused there and the process ends (C++: `std::terminate`), where that frame is on the stack; a `longjmp`, or the end of a thread that does not unwind, is not detected and is outside the guarantees ([ABI-3] (c); decision 0013) | the end of the process is not a trap report ([TRAP-1]); with destructors, a foreign exception or a `longjmp` would skip cleanups | the design of destructors and ownership (#6): a trap report at the boundary, or a declared unwinding contract |

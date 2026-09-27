@@ -38,7 +38,10 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   break const continue defer dyn for impl in loop module par self static trait
   type unsafe use when where yield`. `module` is rejected with a mechanical fix
   to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
-  reserved (`modules.md` [IMP-6]).
+  reserved (`modules.md` [IMP-6]). The compiler's conformance suite copies the
+  lists of [LEX-5] and [LEX-6] word for word and compares them with the
+  lexer's: a change to either list is made in the specification, in the lexer
+  and in that test together.
 - **[LEX-7]** `let` and `var` are identifiers, but a statement that starts with
   `let name` or `var name` is rejected with a note pointing to `:=`.
 - **[LEX-8]** Conventions: `snake_case` for functions, variables and packages;
@@ -91,7 +94,10 @@ path_char = (* printable ASCII other than '"'; the path is then checked by modul
   with a mechanical fix to `@out`.
 - **[LEX-13]** Tokens are read with maximal munch. Consequently `<-` is always
   the region arrow: `a<-b` is an error; a comparison with a negative value is
-  written `a < -b`.
+  written `a < -b`. No other valid program is affected: `a>-b`, `a>=-b`,
+  `a<=-b` and `a--b` read as an operator followed by a unary minus, and
+  reading `->` or `=>` as two tokens could not give a valid program, because
+  `>` is not a prefix operator.
 - **[LEX-14]** `->` has two roles decided by position: after the parameter list
   it introduces the return type; at the start of a region header it is the
   region arrow.
