@@ -319,10 +319,12 @@ them.
   `continue` ends the current iteration of that loop: `while` evaluates its
   condition again, `for` goes to its next value, `loop` runs its body again.
   A `break` or `continue` in a `match` arm leaves the loop around the
-  `match`. The condition of `while` and the source of `for` are not in the
-  loop's body. `break` and `continue` outside the body of every loop are
-  errors. There are no labels and no `break` with a value in this version
-  (OPEN #49).
+  `match`. The condition of `while` and the source of `for` (each bound of a
+  range) are not in the loop's body: a `break` or `continue` there would act
+  on the loop around it, and is an error in this version (accepting it later
+  only accepts more programs). `break` and `continue` outside the body of
+  every loop are errors. There are no labels and no `break` with a value in
+  this version (OPEN #49).
 - **[LOOP-3]** A range `a..b` is the integers from `a` up to `b`, `b`
   excluded, and is empty when `a ≥ b`; `a..=b` includes `b` and is empty when
   `a > b`. Both bounds have the same integer type, which each takes from the

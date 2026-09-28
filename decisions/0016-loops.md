@@ -2,7 +2,8 @@
 
 - Status: Accepted — **experimental** (proposed with task
   TASK-20260926-033 of the master plan of 2026-09-26, Phase 5; open to the
-  author's review)
+  author's review; the type of a range of literals (item 3) is reviewed by
+  the author at the gate of 0.1)
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-5], [LEX-6], [NL-8], [GR-6], [GR-8], §3 (`loop`,
   `for`, `break`, `continue`); `semantics.md` [TY-4], [DECL-3], [FN-2],
@@ -63,19 +64,25 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
    the current iteration of that loop (`while` evaluates its condition again,
    `for` takes the next value, `loop` runs its body again). A `break` or
    `continue` in a `match` arm leaves the loop around the `match`. The
-   condition of `while` and the head of `for` are not part of the body: a
-   `break` there belongs to the loop around it. Outside the body of every
-   loop, `break` and `continue` are errors.
+   condition of `while` and the head of `for` (its source, each bound of a
+   range) are not part of the body: a `break` or `continue` there would act
+   on the loop around it, not on that loop, which a reader does not expect,
+   so this version refuses it. Outside the body of every loop, `break` and
+   `continue` are errors.
 3. **Integer ranges** ([LOOP-3]). `a..b` is `a`, `a + 1`, …, `b − 1`, empty
    when `a ≥ b`; `a..=b` ends at `b` included, empty when `a > b`. Both bounds
    have one integer type, taken from each other, as the operands of `+`
    ([TY-4]), or from the annotation of the variable; when neither gives one
    (`0..10`), the type is `usize`, the type of a position ([REF-4]), which
-   [TY-4] now says. Both bounds are evaluated once, left to right, before the
-   first iteration: changing what they read inside the body does not change
-   the iterations. Iterating never overflows and never traps: the loop stops
-   after its last value instead of computing the next one, so
-   `for i: u8 in 250..=255` runs six times.
+   [TY-4] now says. The type errors that this `usize` causes (a use of the
+   variable where another integer type is expected, a literal that does not
+   fit) say where the `usize` comes from, and offer to write the type after
+   the variable when the other type is known. The author reviews this
+   default at the gate of 0.1 (alternatives below). Both bounds are
+   evaluated once, left to right, before the first iteration: changing what
+   they read inside the body does not change the iterations. Iterating never
+   overflows and never traps: the loop stops after its last value instead of
+   computing the next one, so `for i: u8 in 250..=255` runs six times.
 4. **Elements** ([LOOP-4]). `for x in s` where `s` is a slice (`&[T]`: a
    parameter, a local, `&a`, `t.bytes`) or names an array local, which is the
    same as `&a` and so requires what `&a` requires: an array that is not
@@ -105,9 +112,11 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
      `{ while true { if c { break } } }` has type `()`).
 
    Without labels, the loop a `break` leaves is found in the text, so the
-   rule is exact for the statements of this version; it is checked on the
-   typed program, where the three engines (native at `-O0`, `-O2` and the
-   reference evaluator) read it.
+   rule is exact about the loop a `break` leaves; it is conservative about
+   ranges and conditions (`for _ in 0..3 { return 1 }` and
+   `while !false { return 1 }` never reach their end, and still count as
+   going on). It is checked on the typed program, where the three engines
+   (native at `-O0`, `-O2` and the reference evaluator) read it.
 7. **Cells, regions and effects** ([LOOP-6], [LOOP-7]). Loops are statements
    of `<- @eval` and `-> @effect`, at any depth, like `while`; `break` and
    `continue` follow the rules of the region of their loop. They leave a
@@ -131,9 +140,20 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   Ranges as values of their own type (`r := 0..3`): a type is needed only to
   store or pass a range; left open (OPEN #47, #49), since accepting it later
   changes no valid program.
-- **The type of `0..10`.** An error asking for a type (E0303, like
-  `x := 0`): rejected, `for i in 0..10` is the first loop people write, and
-  its bounds are positions far more often than anything else. Inference from
+- **The type of `0..10`.** An error asking for a type when no bound gives
+  one (E0303, like `x := 0`), with a mechanical fix that writes `: usize`
+  (the review of 2026-09-28 recommends it: nothing silent, M-2, and the same
+  meaning on 32 and 64 bits, [TGT-2]; it only affects ranges of literals,
+  since `0..n` and `0..a.len` take the type of their other bound): not
+  chosen for now, `for i in 0..10` is the first loop people write, and its
+  bounds are positions far more often than anything else; it stays the
+  alternative the author weighs at the gate of 0.1, and switching to it
+  before the opening has a mechanical fix that keeps the meaning (OPEN #48).
+  A range of literals typed `usize` leaks into a variable of the program: the
+  same source may then trap or be refused on a 32-bit target only
+  (`for i in 0..100000 { n = n + widen(i * i) }`), which is why the
+  diagnostics name it. A default of fixed width (`u64`, `i64`), the same on
+  every target: still a default. Inference from
   the uses of the variable in the body: the checker types by expected type,
   without inference variables. A default of the program's choosing (`i32`,
   `int`): no such type exists. Chosen: `usize` as the context of the bounds
@@ -164,13 +184,20 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   become the first expression made of statements. A value that a loop finds
   is assigned to a `mut` variable declared before it, then `break`. Making
   `loop` an expression later changes no valid program (as for `if`, [GR-3]).
-- **`break` in the condition of `while`.** Rust refuses it without a label.
-  Chosen: the lexical rule — the condition is not the body, so a `break`
-  there leaves the loop around it — which needs no special case.
+- **`break` in the condition of `while`** (and `continue`, and both in the
+  head of `for`). The lexical rule — the condition is not the body, so a
+  `break` there acts on the loop around it — needs no special case, but a
+  reader expects the `break` written in `while …` to leave that `while`.
+  Rust refuses it without a label (E0590). Chosen: refused in this version,
+  with a diagnostic that says which loop it would act on. Accepting the
+  lexical rule later (or another meaning, once there are labels) only
+  accepts more programs, as for labels; accepting it now and refusing or
+  changing it later would break programs.
 - **The rule for loop exits.** Keeping "`while true` never ends": wrong with
   `break` (the problem above). An analysis on a control-flow graph (the
   MIR-0 of the architecture audit, §6): not yet; the structural rule is exact
-  for this version and the MIR-0 verifier will check it.
+  about the loop a `break` leaves and conservative about ranges and
+  conditions, and the MIR-0 verifier will check it.
 
 ## What could change it
 
@@ -181,4 +208,7 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   borrow rule instead of immutability.
 - Programs that need labels or `break` with a value often enough; the
   measurements of `for` against `while` in the benchmarks.
-- The author's review of the type of an unannotated range (`usize`).
+- The author's review, at the gate of 0.1, of the type of an unannotated
+  range of literals (`usize`, or E0303 with a mechanical fix).
+- Programs that need `break` or `continue` in the condition of `while` or
+  the head of `for` (refused in this version).
