@@ -14,10 +14,10 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[PRG-2]** Items are enums, structs, functions and *(experimental,
   decision 0018)* constants ([CONST-1]). Item names are unique in
   the package, across its files (`modules.md` [PKG-4]). The prelude names —
-  `bool`, the integer type names, `str`, `Console` *(decision 0015)*,
-  `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and
-  §6.5 — can not be redefined, neither as items, import names, parameters or
-  local variables.
+  `bool`, the integer type names, `str`, `Console` *(decision 0015)*, `f32`
+  and `f64` *(decision 0019)*, `Option`, `Result`, `Some`, `None`, `Ok`,
+  `Err`, the operations in §6.4, §6.5 and §6.6 — can not be redefined,
+  neither as items, import names, parameters or local variables.
 - **[PRG-3]** An executable program has `fn main()` (§10). A package without
   `main` can be compiled to an object and linked with other code. An
   executable package cannot be imported (`modules.md` [PKG-8]).
@@ -29,8 +29,9 @@ compiler's diagnostic codes are listed in the compiler repository
 | `bool` | `true`, `false` | anywhere |
 | `i8 i16 i32 i64 isize` | two's-complement integers of that width | anywhere |
 | `u8 u16 u32 u64 usize` | unsigned integers of that width | anywhere |
+| `f32 f64` | IEEE 754 binary32 and binary64 floats *(experimental, decision 0019; §6.6)* | anywhere |
 | `()` | the single unit value `()` | anywhere; a function without `-> T` returns `()` |
-| `E` (an `enum`) | one of its variants, written `E.Variant` | anywhere |
+| `E` (an `enum`) | one of its variants, written `E.Variant`, or `E.Variant(v, …)` with the values the variant holds (§2.2) | anywhere except the C boundary ([ABI-2]) |
 | `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
 | `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
@@ -39,16 +40,18 @@ compiler's diagnostic codes are listed in the compiler repository
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
-- **[TY-1]** *Value types* are `bool`, the integers, `()`, enums, structs, and
-  `Option` and `Result` of value types. They are copied on assignment, when
-  passed and when returned. Arrays and slices have value-type elements.
+- **[TY-1]** *Value types* are `bool`, the integers, the floats *(decision
+  0019)*, `()`, enums (also those whose variants hold data, §2.2), structs,
+  and `Option` and `Result` of value types. They are copied on assignment,
+  when passed and when returned. Arrays and slices have value-type elements.
 - **[TY-2]** `usize` and `isize` have the pointer width of the target's data
   model: 32 or 64 bits in this version. They are distinct types from `u32`,
   `u64`, `i32` and `i64` on every target. All other integer types have the
   same width on every target.
-- **[TY-3]** Enum variants carry no data in this version, and an enum has
-  between 1 and 256 variants. `Option` and `Result` are known to the compiler;
-  user-defined generics do not exist yet.
+- **[TY-3]** *(decision 0017)* A variant of an enum may hold data (§2.2); an
+  enum has between 1 and 256 variants. `Option` and `Result` are known to the
+  compiler; user-defined generics do not exist yet. *(Before decision 0017,
+  variants carried no data.)*
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
@@ -56,7 +59,11 @@ compiler's diagnostic codes are listed in the compiler repository
   have `usize` as their context when neither bound nor the loop variable
   gives them a type ([LOOP-3]). A literal that does not fit its type is an error;
   a `-` directly applied to a literal is part of the literal, so
-  `x: i8 := -128` is valid.
+  `x: i8 := -128` is valid. *(experimental, decision 0019)* A float literal
+  ([LEX-19]) takes the float type expected by its context in the same way;
+  there is no default float type either ([FLT-2]). An integer literal is
+  never a float (`x: f64 := 1` is an error) and a float literal never an
+  integer.
 - **[TY-5]** `None`, `Ok(…)` and `Err(…)` need an expected type. `Some(v)` can
   take its type from `v`.
 - **[TY-6]** Arrays are created only from literals. Copying a whole array from
@@ -102,10 +109,11 @@ compiler's diagnostic codes are listed in the compiler repository
   the whole value. There is no aliasing: writing a field through one variable
   never changes another variable, a caller's argument or a stored copy.
 - **[STRUCT-7]** In this version structs have no equality or ordering
-  operators (`a == b` is an error; compare fields), no methods, no patterns (a
-  `match` whose subject is a struct is an error; an `Option<S>` or
-  `Result<S, E>` is matched as usual and its payload bound to a name), and no
-  C ABI ([ABI-2]). A struct value is never discarded silently ([DECL-5]).
+  operators (`a == b` is an error; compare fields), no methods and no C ABI
+  ([ABI-2]). *(decision 0017)* A struct is matched with struct patterns
+  ([MATCH-5]), or bound whole by a name; before decision 0017 structs had no
+  patterns and a `match` on a struct was an error. A struct value is never
+  discarded silently ([DECL-5]).
 - **[STRUCT-8]** The **layout** of a struct — its size, alignment and field
   offsets — is defined by the compiler for the selected target ([TGT-1]),
   never by the machine the compiler runs on. It is an **internal** layout,
@@ -114,25 +122,68 @@ compiler's diagnostic codes are listed in the compiler repository
   compiler, fields are laid out in declaration order, each at the next offset
   that is a multiple of its alignment, and the struct is aligned to its most
   aligned field and padded to a multiple of that alignment; `bool` and enums
-  take one byte, `()` none, integers their width, aligned as the target's data
-  layout says (64-bit integers are 4-byte aligned on 32-bit x86 Linux and
-  8-byte aligned on the other supported targets; `usize`/`isize` follow
-  [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
-  `Result<T, E>` as `{ tag: u8, ok: T, err: E }`. See
-  `decisions/0012-structs-and-layout.md`.
-- **[STRUCT-9]** *(limits of this version)* A value of a struct type, or of an
-  `Option` or `Result` type, has at most 16 384 scalar components and at most
-  256 levels of nesting. Components: every integer, `bool`, enum and `()`
-  counts one, and so does the tag of every `Option` and `Result`, including
-  those inside nested structs. Nesting: each struct, `Option` and `Result`
-  that holds another value inline adds one level (a struct of scalars is one
-  level), consistent with [GR-5]. The limits apply to every struct
-  declaration and to every `Option`/`Result` type a program writes or builds
-  (`Some(v)`); an array counts as its element type, since it is never copied
-  whole ([TY-6]). Without them, a few declarations could describe a value of
-  millions of components (each struct holding two of the previous one) or a
-  chain of structs deep enough to exhaust the tools. Both measures are
-  independent of the target ([TGT-2]).
+  without data take one byte, `()` none, integers their width, aligned as the
+  target's data layout says (64-bit integers are 4-byte aligned on 32-bit x86
+  Linux and 8-byte aligned on the other supported targets; `usize`/`isize`
+  follow [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
+  `Result<T, E>` as `{ tag: u8, ok: T, err: E }`; an enum with data as
+  [ENUM-5] says. See `decisions/0012-structs-and-layout.md` and
+  `decisions/0017-enum-payloads-and-patterns.md`.
+- **[STRUCT-9]** *(limits of this version)* A value of a struct type, of an
+  enum with data (§2.2), or of an `Option` or `Result` type, has at most
+  16 384 scalar components and at most 256 levels of nesting. Components:
+  every integer, `bool`, enum without data and `()` counts one, and so does
+  the tag of every `Option`, `Result` and enum with data, including those
+  inside nested structs and enums; an enum with data counts its tag and the
+  components of the data of every variant. Nesting: each struct, enum with
+  data, `Option` and `Result` that holds another value inline adds one level
+  (a struct of scalars is one level), consistent with [GR-5]. The limits
+  apply to every struct and enum declaration and to every `Option`/`Result`
+  type a program writes or builds (`Some(v)`); an array counts as its element
+  type, since it is never copied whole ([TY-6]). Without them, a few
+  declarations could describe a value of millions of components (each struct
+  holding two of the previous one) or a chain of structs deep enough to
+  exhaust the tools. Both measures are independent of the target ([TGT-2]).
+
+### 2.2 Enums with data *(experimental, decision 0017)*
+
+- **[ENUM-1]** A variant of an enum is a name, or a name followed by the
+  types of the values it holds, in parentheses: `Rect(u32, u32)`. A variant
+  written with parentheses holds at least one value (`V()` is an error). The
+  types are value types other than arrays, as for struct fields
+  ([STRUCT-1]): integers, the floats *(decision 0019)*, `bool`, `()`, enums,
+  structs, `Option` and `Result`; slices, text and capabilities are not. Named fields
+  (`V { a: T }`) are not supported: a variant holds a struct for them. An
+  enum mixes variants with and without data in any order. An enum that holds
+  itself — directly, inside `Option` or `Result`, or through structs and
+  other enums — would have infinite size and is an error ([STRUCT-2]). The
+  data of the variants of a `pub enum` is part of its interface: its types
+  are public ([VIS-3]).
+- **[ENUM-2]** `E.V(e1, …, en)`, or `pkg.E.V(e1, …, en)` for an enum of an
+  imported package, builds variant `V` with one value per type it declares,
+  each checked against its type (an integer literal takes its type from it,
+  [TY-4]). The values are evaluated in the order they are written, each
+  completely, before the enum value exists; a trap, or a `?` that returns, in
+  one value prevents the evaluation of the later ones ([ORD-5]). A variant
+  with data is always written with its values (`E.V` alone is an error), and
+  a variant without data without parentheses (`E.V()` is an error).
+- **[ENUM-3]** An enum with data is a value ([TY-1]): declaring, assigning,
+  passing, returning and storing it in other values copy it whole, with its
+  data, as for structs ([STRUCT-6]); there is no aliasing.
+- **[ENUM-4]** `==` and `!=` are not defined for an enum that has a variant
+  with data; it is inspected with `match` ([NUM-5]). An enum without data
+  keeps them.
+- **[ENUM-5]** The layout of an enum is internal, like that of a struct
+  ([STRUCT-8]), and tools report it (`yxy inspect --json`). An enum without
+  data is its one-byte tag. In the current compiler an enum with data is laid
+  out as `{ tag: u8, payload of each variant, in declaration order }`: the
+  tag is the variant's number in declaration order, counted from 0; the
+  payload of a variant with data is laid out as a struct of its values, in
+  order ([STRUCT-8]); the payload of a variant without data is empty (size 0,
+  alignment 1). Payloads are not overlapped (`decisions/OPEN.md` #35). Only
+  the tag and the payload of the variant a value holds are written, and a
+  `match` reads a payload only where the tag says that its variant is the one
+  held.
 
 ## 3. Names, declarations and mutability
 
@@ -156,7 +207,8 @@ compiler's diagnostic codes are listed in the compiler repository
   value is not `()` is an error; write `_ := expr` to discard.
 - **[DECL-6]** In a pattern, a bare name binds the value. When the matched type
   is an enum that has a variant with that name, the pattern is an error (it
-  would silently match everything); the variant is written `Enum.Variant`.
+  would silently match everything); the variant is written `Enum.Variant`,
+  and a variant with data `Enum.Variant(p, …)` ([MATCH-4]).
 
 ### 3.1 Constants *(experimental, decision 0018)*
 
@@ -167,16 +219,18 @@ compiler's diagnostic codes are listed in the compiler repository
   only: a `const` inside a function is an error. Its name stands for its
   value wherever it is read; it cannot be assigned, borrowed, indexed or
   called, is not a type, and is not a pattern (a name in a pattern binds,
-  [DECL-6]); no other item, parameter, local or binding of its package
-  takes its name ([DECL-3]).
+  [DECL-6]; `pkg.N` in a pattern, or a constant as the name of a struct
+  pattern, [MATCH-5], is an error); no other item, parameter, local or
+  binding of its package takes its name ([DECL-3]). *(decision 0019)*
+  Floats have no constants: `f32` and `f64` are not types of a constant.
 - **[CONST-2]** The value is a **constant expression**: integer literals,
   `true`, `false`, names of constants (`N`, or `pkg.N` of an import), the
   operators of `syntax.md` §4, grouping parentheses, and `widen(x)` of a
   constant expression `x` ([CONV-1]: it never traps and keeps the value).
   Nothing else is: no other call (not `checked_convert` nor the operations
   of §6.4: there is no `const fn`), no variable, field, `.len`, variant,
-  `match`, text or array. It is typed as in a function body ([TY-4],
-  [CONV-1]), and its type is the constant's.
+  `match`, float literal, text or array. It is typed as in a function body
+  ([TY-4], [CONV-1]), and its type is the constant's.
 - **[CONST-3]** The compiler computes the value of every constant of the
   program, used or not, before the program runs, by the rules of §6 on the
   target's data model ([TY-2]): operands left to right, `&&` and `||`
@@ -219,8 +273,12 @@ compiler's diagnostic codes are listed in the compiler repository
   constants it names, already limited by [CONST-4], and is not limited
   itself, since a warning decides nothing. An operation that reads a
   variable is not computed at compile time and gets no warning, even when
-  it always traps (`x / 0`). A warning never makes a program invalid and
-  never changes what it does; it may depend on the target ([TGT-2]).
+  it always traps (`x / 0`). An integer constant expression inside
+  `to_float`, `fma` or the values of a variant ([FLT-6], [FLT-7], [ENUM-2])
+  is one like any other; the operand of `truncate_to_int` ([FLT-8]) is a
+  float, never a constant expression, so its trap gets no warning. A
+  warning never makes a program invalid and never changes what it does; it
+  may depend on the target ([TGT-2]).
 
 ## 4. Borrows
 
@@ -304,14 +362,35 @@ them.
   all return, or leave their iteration with `break` or `continue`, [LOOP-5])
   can only be used as a statement; binding it, passing it or returning it is
   an error.
-- **[MATCH-1]** A `match` covers every value of the matched type; otherwise it
-  is an error that names one value not covered. Integer matches need a final
-  `_` arm.
+- **[MATCH-1]** A `match` covers every value of the matched type — for a
+  struct or a variant with data, every combination of the values of its
+  fields ([MATCH-4], [MATCH-5]) —; otherwise it is an error that names one
+  value not covered. Integer matches need a final `_` arm (an integer inside
+  a struct or a variant needs `_` in some arm at its position).
 - **[MATCH-2]** An arm that can never match, because earlier arms cover every
   value it matches, is an error.
 - **[MATCH-3]** Without an expected type, the type of a `match` comes from its
   arms: an arm whose value needs a type from context (an integer literal,
   `None`) takes it from the other arms, whatever their order.
+- **[MATCH-4]** *(decision 0017)* `E.V(p1, …, pn)` matches variant `V` of
+  enum `E` when each value it holds matches the pattern in its position; a
+  variant with data is matched with exactly one pattern per value (a value
+  that is not tested is `_`), and a variant without data without
+  parentheses. `Some`, `Ok` and `Err` take exactly one pattern. There are no
+  rest patterns (`Some(..)`, `E.V(..)`).
+- **[MATCH-5]** *(decision 0017)* `S { f1: p1, …, fn: pn }` matches a value
+  of struct `S` when each field matches its pattern. Every field of `S` is
+  written exactly once, in any order, as `field: pattern`; a field that is
+  not tested is `field: _`. There is no `..` and no shorthand
+  (`S { f }`); a missing, unknown or repeated field is an error. A struct of
+  another package with a field that is not `pub` cannot be matched with a
+  struct pattern ([VIS-2]). Struct patterns and patterns of variants nest in
+  each other, and in `Some`, `Ok` and `Err`, at any depth.
+- **[MATCH-6]** *(decision 0017)* Checking [MATCH-1] and [MATCH-2] for one
+  `match` has a fixed budget of work, the same on every target and machine
+  ([TGT-2]); a `match` whose check needs more is an error, with a note to
+  split it, and the compiler never runs away on it. The budget, and the unit
+  it is counted in, are the compiler's, documented with its diagnostics.
 - **[CELL-1]** A **cell** is a function body written as regions. In this version
   a cell is the whole body. Regions appear in this order, each optional:
 
@@ -480,14 +559,17 @@ hold in every build mode; there is no unchecked release mode.
   types and logical for unsigned types. Both operands have the same type.
 - **[NUM-4]** `& | ^` operate on the two's-complement bits and never trap.
 - **[NUM-5]** Comparisons compare mathematical values. `==` and `!=` also apply
-  to `bool` and enums; `Option` and `Result` are inspected with `match`;
-  structs have no comparison operators ([STRUCT-7]).
+  to `bool` and to enums whose variants hold no data; `Option`, `Result` and
+  enums with data are inspected with `match` ([ENUM-4]); structs have no
+  comparison operators ([STRUCT-7]). Floats compare as IEEE 754 says
+  ([FLT-9]).
 
 ### 6.3 Traps
 
 - **[TRAP-1]** A trap writes one report to standard error and ends the
   process with exit status **101**. The report names the kind of failure (the
-  table of §6.2, or a refused console write, [CON-4]) and the position of the
+  table of §6.2, a refused console write, [CON-4], or *(decision 0019)* a
+  float-to-integer conversion out of range, [FLT-8]) and the position of the
   checked operation,
   `<file>:<line>:<column>`; by default it is one line of text,
   `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
@@ -551,7 +633,86 @@ Both operands have the same integer type, taken from them or from context.
 - **[CONV-2]** `checked_convert(x)` converts to the `Option<T>` expected by
   context: `Some(v)` when the value fits in `T`, `None` otherwise. It is
   checked at run time.
-- **[CONV-3]** There is no truncating cast. `as` is reserved.
+- **[CONV-3]** There is no cast that drops the high bits of an integer (C's
+  narrowing conversion). `as` is reserved. Floats convert with the
+  operations of §6.6 ([FLT-7], [FLT-8]).
+
+### 6.6 Floating point *(experimental, decision 0019)*
+
+- **[FLT-1]** `f32` and `f64` are IEEE 754 binary32 and binary64, the same on
+  every target. They are value types ([TY-1]): locals, parameters, results,
+  struct fields, array elements, `Option` and `Result` payloads, the values
+  of enum variants ([ENUM-1], decision 0017), and the C boundary ([ABI-2]). Their layout is their width, aligned as the target's
+  data layout says (`f64` is 4-aligned on 32-bit x86 Linux, 8-aligned on the
+  other targets; [STRUCT-8]).
+- **[FLT-2]** A float literal ([LEX-19]) takes the float type its context
+  expects ([TY-4]); with no context it is an error. Its value is the decimal
+  value it writes, rounded to nearest, ties to even, in that type. A literal
+  whose rounded value is infinite, or that is not zero but rounds to zero, is
+  an error. A `-` directly applied to a float literal is part of it: `-0.0`
+  is negative zero. There are no literals for infinities and NaN.
+- **[FLT-3]** Floating point does not depend on the target: the same program
+  gives the same bits on every target, but for the sign and payload of a NaN
+  ([FLT-9]). Where the default of the target's C compiler would not
+  guarantee it, the compiler fixes the CPU of the code it generates: on
+  32-bit x86 Linux, a CPU with SSE2 (`pentium4`), so that `f32` and `f64`
+  arithmetic is computed at its own precision and never in the x87 unit's
+  extended precision; CPUs without SSE2 are not supported. Yxy code runs
+  with round-to-nearest-even, no trapped floating-point exception and
+  subnormal values kept, and on 32-bit x86 with the x87 precision control at
+  its default (a 64-bit significand); the runtime never changes this, and
+  foreign code must leave it so ([EFF-5]).
+- **[FLT-4]** `a + b`, `a - b`, `a * b`, `a / b` apply to two operands of the
+  same float type and give that type; `-a` negates. Each operation is the
+  IEEE 754 operation, rounded once to nearest with ties to even. They
+  **never trap**: an overflow gives an infinity, `x / 0.0` a signed infinity,
+  `0.0 / 0.0` and `inf - inf` NaN, and no exception flag can be observed.
+  Evaluation is **strict**: operands left to right, each operation rounded,
+  grouped as written, so `a * b + c` rounds twice. The compiler does not fuse
+  (contract), reassociate or otherwise change floating-point operations,
+  applies no identity that changes a result (`x + 0.0` is not `x` for `-0.0`,
+  `x * 0.0` is not `0.0` for an infinity), and assumes no value finite or
+  not NaN — by default and under every option of this version; an optimizer
+  may only make changes that keep every bit of every result, but the sign
+  and payload of a NaN. Zeros have signs: every operation gives the sign
+  IEEE 754 specifies (`x - x` is `+0.0`, `-0.0 + -0.0` is `-0.0`, `1.0 /
+  -0.0` is negative infinity), and `-x` changes the sign of every value, zero
+  and NaN included. A reduction whose order may change is not something the
+  compiler does; it would come from an explicit interface (`decisions/OPEN.md`
+  #8, after #43).
+- **[FLT-5]** `%` is not defined for floats, nor are the bitwise operators,
+  the shifts and `!`: each is an error.
+- **[FLT-6]** `fma(a, b, c)` is `a * b + c` rounded **once** (IEEE 754
+  fusedMultiplyAdd), for three operands of one float type, taken from them or
+  from context as for §6.4. It is the one way to fuse a multiplication and
+  an addition, and gives the same bits on every target.
+- **[FLT-7]** `to_float(x)` converts an integer or a float to the float type
+  expected by context, rounded to nearest, ties to even: exact from `f32` to
+  `f64`; from `f64` to `f32` a value beyond the range of `f32` becomes an
+  infinity of its sign, and NaN stays NaN. There is no implicit conversion
+  between floats and integers or between `f32` and `f64`, and `widen` and
+  `checked_convert` convert integers only ([CONV-1], [CONV-2]).
+- **[FLT-8]** `truncate_to_int(x)` converts the float `x` to the integer type
+  expected by context, rounding toward zero. When `x` is NaN or the rounded
+  value does not fit the type (infinities included) the program **traps**
+  with the kind *float-to-integer conversion out of range* ([TRAP-1],
+  [TRAP-3]). `checked_truncate_to_int(x)` gives `Some(v)` instead, or `None`
+  where the other traps; it never traps.
+- **[FLT-9]** `==`, `!=`, `<`, `<=`, `>`, `>=` on floats compare as IEEE 754
+  does: `-0.0 == 0.0` holds, and with a NaN operand every comparison is false
+  but `!=`, which is true (`x != x` holds exactly when `x` is NaN). Equality
+  is not a comparison of bits. An operation whose operands are not NaN never
+  produces a signaling NaN; the NaN it produces is quiet. A signaling NaN can
+  only come from foreign code; an operation with a signaling operand gives a
+  NaN, quiet or not (not specified: a value computed when compiling and one
+  computed when running may differ), `-x` keeps the quietness of `x`, and
+  passing a NaN through the C boundary may make it quiet. The **sign and
+  payload of a NaN are not specified** either (they differ between targets
+  and between a value computed when compiling and one computed when
+  running), and no operation of this version observes them.
+- **[FLT-10]** A float literal is never a pattern: `match` arms of floats are
+  `_` or a binding, and a `match` on a float needs one of them to cover every
+  value ([MATCH-1]).
 
 ## 7. Effects
 
@@ -584,11 +745,17 @@ Both operands have the same integer type, taken from them or from context.
   no `unsafe` construct yet. *(experimental)* These guarantees assume that the
   foreign side keeps the contract of the boundary: foreign callers of an
   `export fn` follow the target's C ABI ([ABI-2]); foreign code does not
-  unwind across Yxy frames ([ABI-3] (c)); and the objects and C files linked
-  into the program (`--link`) do not define the C symbols that the generated
-  code calls: the hosted runtime's `write`, `_exit` and `getenv`, and helpers
-  of the C implementation whose names start with `__` ([ABI-3] (a): the stack
-  probe, the arithmetic helpers of 32-bit targets). The code generated to copy
+  unwind across Yxy frames ([ABI-3] (c)); *(decision 0019)* foreign code
+  leaves the floating-point environment as Yxy code runs it —
+  round-to-nearest-even, no trapped exception, subnormals kept, and on
+  32-bit x86 the x87 precision control at its default, a 64-bit significand
+  ([FLT-3]) — whenever control returns to Yxy code or enters it; and the objects and C
+  files linked into the program (`--link`) do not define the C symbols that
+  the generated code calls: the hosted runtime's `write`, `_exit` and
+  `getenv`, helpers of the C implementation whose names start with `__`
+  ([ABI-3] (a): the stack probe, the arithmetic helpers of 32-bit targets),
+  and *(decision 0019)* the C library's `fma` and `fmaf`, which carry out
+  [FLT-6] on a CPU without a fused multiply-add instruction. The code generated to copy
   a struct or to fill an array with `[value; N]` calls no function that the
   program or a linked object can define, so a linked object that defines
   `memcpy` or `memset` does not reach it, and it has no effect of its own,
@@ -601,7 +768,7 @@ Both operands have the same integer type, taken from them or from context.
 | call to a Yxy function | the callee's declared effects |
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
-| operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5 | no tracked effect; may trap (§6.2) |
+| operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |
 | loops (`while`, `loop`, `for`) | no tracked effect; iterating never traps ([LOOP-7]) |
 | trap | not an effect; it writes its message to standard error and ends the process |
 | typed failure (`Result`, `require`, `?`) | not an effect; it is in the return type |
@@ -652,9 +819,11 @@ stream, the effect that a write may happen.
   its own name. All other functions are internal to the program. `export`
   names are unique in the whole program, and `extern` declarations of one
   symbol in different packages must agree (`modules.md` [VIS-8]).
-- **[ABI-2]** Only integers and `bool` cross the boundary (and `()` as a return
-  type). Slices, enums, structs, `Option` and `Result` do not, because their
-  layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
+- **[ABI-2]** Only integers, `bool` and *(decision 0019)* the floats cross
+  the boundary (and `()` as a return type); `f32` is C's `float` and `f64`
+  C's `double`, on every target. Slices, enums (with or without data),
+  structs, `Option` and `Result` do not, because their layout is not a
+  stable ABI ([STRUCT-8], [ENUM-5]). Integers and `bool` narrower than
   32 bits follow the C ABI of each target, which differ: some make the caller
   extend them to 32 bits (Apple's ARM64 ABI), some leave the bits beyond the
   value's width unspecified (the generic AAPCS64). When Yxy passes such a
@@ -675,7 +844,8 @@ stream, the effect that a write may happen.
   - (b) *(experimental)* the C library functions that the generated code may
     call without a call in the source, to copy, fill or compare memory —
     `memcpy`, `memmove`, `memset`, `memcmp`, `bcmp`, `bzero` and
-    `memset_pattern16` —, and names starting with `_` (C11 7.1.3 reserves
+    `memset_pattern16` — and *(decision 0019)* to carry out `fma` of `f32`,
+    `fmaf` (`fma`, of `f64`, is a prelude name, [PRG-2]), and names starting with `_` (C11 7.1.3 reserves
     them for the C implementation as identifiers with file scope, which an
     `export` symbol is: `_start`, the entry point of ELF programs,
     `_mh_execute_header` of Mach-O executables, `_GLOBAL_OFFSET_TABLE_` of
@@ -748,9 +918,12 @@ stream, the effect that a write may happen.
 
 ## 12. Outside this version
 
-Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
-generics, traits, closures, function values, method calls (other than the
-operations of a `Console`, [CON-2]), loop labels, `break` with a value,
+Rejected with a diagnostic, never ignored: `when`, named fields in enum
+variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
+patterns (`..`) and field shorthand in patterns, destructuring declarations
+(`P { x: a } := p`), user-defined generics, traits, closures, function
+values, method calls (other than the operations of a `Console`, [CON-2]),
+loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating a `mut` array or text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
 dependencies on other modules, manifest requirements,
@@ -759,13 +932,26 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
-owned strings, characters, the text operations of [TEXT-7], floating point,
+owned strings, characters, the text operations of [TEXT-7], the float
+operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
+types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, *(decision 0018)* constants inside
 a function, constants of types other than the integers and `bool`, calls in
 constant expressions other than `widen` (`const fn`), constants as patterns, generic enums, mutable slices, enums
 without variants and enums with more than 256 variants; for structs: generic
 structs, structs without fields, arrays and slices as fields, recursive
-structs, structs beyond [STRUCT-9], equality, patterns, methods, field
+structs, structs beyond [STRUCT-9], equality, methods, field
 shorthand, update syntax, fields of array elements or temporaries as assignment
 targets, and structs at the C boundary.
+
+## Glossary
+
+Terms whose meaning this specification fixes where ordinary usage varies.
+
+- **truncate** *(decision 0019)*: to round toward zero, dropping the
+  fraction of a value: integer division truncates ([NUM-2]), and
+  `truncate_to_int` truncates a float to an integer ([FLT-8]). It never
+  means dropping the high bits of an integer to fit a narrower type (the
+  narrowing conversion of C, which some languages call truncation): no
+  operation of the language does that ([CONV-3]).

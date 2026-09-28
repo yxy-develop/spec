@@ -66,12 +66,13 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   (`10u8`) and values above 2^128 − 1 are errors. There is no octal.
 - **[LEX-10]** An integer literal has no type of its own: its type comes from
   context (see `semantics.md` [TY-4]).
-- **[LEX-11]** `1.5` is rejected as an unsupported floating-point literal.
+- **[LEX-11]** *(decision 0019)* `1.5` is a float literal ([LEX-19]).
   Character literals (`'x'`) are not supported: a code point is not a type in
   this version, and text of one character is a string literal, `"x"`. A
   double-quoted literal is the path of an import right after `import`
   ([LEX-17]), and a string literal anywhere else ([LEX-18]).
-  *(Before decision 0015 a string literal was refused outside an import.)*
+  *(Before decision 0015 a string literal was refused outside an import;
+  before decision 0019 a float literal was refused.)*
 - **[LEX-17]** The double-quoted literal right after `import` is the path of
   the import (`modules.md` [IMP-1]): on one line, without escape sequences,
   printable ASCII only; its content is checked by `modules.md`
@@ -98,6 +99,30 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   a reader sees equal to the bytes the program holds, whatever the
   normalization or look-alike characters of an editor; allowing UTF-8 written
   as itself later would only accept more programs.
+
+- **[LEX-19]** *(experimental, decision 0019)* A **float literal** is decimal
+  digits, `.`, decimal digits, and an optional exponent `e` or `e-` followed
+  by decimal digits:
+
+  ```ebnf
+  FLOAT  = dec "." digits [ "e" [ "-" ] dec ] ;
+  digits = digit { [ "_" ] digit } ;
+  ```
+
+  `dec` is the decimal integer of [LEX-9] (no leading zeros), and `_`
+  separates two digits as in integers (`1_000.000_1`). Each form has one
+  spelling (a value can still be written in several forms: `1.5`, `1.50`,
+  `15.0e-1`): `1.` (no digits after `.`), `1e5` (an exponent without the
+  fraction), `1.5E3` (a capital `E`), `1.5e+3` (a `+`) and `1.0e05`
+  (leading zeros in the exponent) are errors, each with a mechanical fix to
+  the one spelling of its form (`1.0`, `1.0e5`, `1.5e3`, `1.5e3`,
+  `1.0e5`); `.5` is read as `.` followed by `5` and so is refused as a
+  malformed expression. A type suffix (`1.5f32`), leading zeros (`007.5`),
+  a misplaced `_` and an exponent without digits are errors without a fix.
+  There are no hexadecimal float literals and no literals for infinities or
+  NaN. `1.len` and `1..2` are an integer followed by `.`, not a float. A
+  float literal has no type of its own: its type comes from context
+  (`semantics.md` [TY-4], [FLT-2]).
 
 ```ebnf
 PATH      = '"' path_char { path_char } '"' ;
@@ -152,10 +177,10 @@ escape    = '\' ( "n" | "t" | "r" | "0" | '\' | '"' ) | '\u{' hexdigit [ hexdigi
 - **[NL-5]** The parts of a function signature may be on separate lines:
   `)`, `-> Type`, `effects { ... }` and the body `{`.
 - **[NL-6]** `NL` is ignored around items, enum variants, struct fields (in
-  declarations and in literals), match arms and region headers, and inside the
-  braces of `effects { ... }`. Inside the braces of a struct literal, `NL` is
-  significant again even when the literal is inside `( )` or `[ ]`; it
-  separates fields like `,`. The package clause and each import end at their
+  declarations, literals and patterns), match arms and region headers, and
+  inside the braces of `effects { ... }`. Inside the braces of a struct
+  literal or a struct pattern, `NL` is significant again even when it is
+  inside `( )` or `[ ]`; it separates fields like `,`. The package clause and each import end at their
   line break (`modules.md` §9).
 - **[NL-7]** A region header may be followed by a statement on the same line
   (compact form) or by statements on the following lines (multi-line form).
@@ -176,7 +201,7 @@ item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl | const_decl ) ;
 qual_name   = IDENT [ "." IDENT ] ;             (* item, or import.item *)
 
 enum_decl   = "enum" IDENT "{" [ variant { ( "," | NL ) variant } [ "," ] ] "}" NL ;
-variant     = IDENT ;
+variant     = IDENT [ "(" type { "," type } [ "," ] ")" ] ;    (* data: semantics.md [ENUM-1] *)
 
 struct_decl = "struct" IDENT "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
 field       = [ "pub" ] IDENT ":" type ;          (* modules.md [VIS-2], OPEN #28 *)
@@ -220,11 +245,11 @@ type        = qual_name [ "<" type { "," type } ">" ]
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" ) unary | postfix ;
-postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name or console.operation *)
+postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant or console.operation *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
-primary     = INT | STRING | "true" | "false" | IDENT | HOLE
+primary     = INT | FLOAT | STRING | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" expr "]"                 (* the count: a constant expression, [CONST-5] *)
@@ -235,20 +260,30 @@ field_init  = IDENT ":" expr ;
 match       = "match" head "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
 arm         = pattern "=>" ( expr | block ) ;
 pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
+            | [ "-" ] FLOAT                          (* parsed, always an error: [FLT-10] *)
             | IDENT                                  (* binding, or `None` *)
-            | IDENT "(" pattern ")"                  (* Some, Ok, Err *)
-            | IDENT "." IDENT                        (* Enum.Variant *)
-            | IDENT "." IDENT "." IDENT ;            (* import.Enum.Variant *)
+            | IDENT "(" patterns ")"                 (* Some, Ok, Err *)
+            | IDENT "." IDENT [ "(" patterns ")" ]   (* Enum.Variant, with its values *)
+            | IDENT "." IDENT "." IDENT [ "(" patterns ")" ]   (* import.Enum.Variant *)
+            | qual_name "{" [ field_pat { ( "," | NL ) field_pat } [ "," ] ] "}" ;   (* [GR-9] *)
+patterns    = pattern { "," pattern } [ "," ] ;
+field_pat   = IDENT ":" pattern ;
 ```
 
-Patterns have no other forms in this version: or-patterns (`p | q`), guards
+A float literal is parsed as a pattern only to be refused: floats are matched
+by `_` or a binding (`semantics.md` [FLT-10], decision 0019). Patterns have
+no other forms in this version: or-patterns (`p | q`), guards
 (`pattern if condition`) and ranges (`a..b`) are open (`decisions/OPEN.md`
-#46), struct patterns too (#33), and an index is one expression, never a
-range (`s[i..j]`, #47). Each is rejected with a diagnostic of its own
-(`semantics.md` §12), also when the pattern goes on over lines (`p` on one
-line, `| q` or `if condition` on the next). A payload that is not used is
-written `_` (`Some(_)`): there are no rest patterns (`Some(..)`), and a
-variant is written with one `.` (`Color.Red`).
+#46), and an index is one expression, never a range (`s[i..j]`, #47). Each is
+rejected with a diagnostic of its own (`semantics.md` §12), also when the
+pattern goes on over lines (`p` on one line, `| q` or `if condition` on the
+next). A value that is not used is written `_` (`Some(_)`,
+`Shape.Rect(w, _)`, `Point { x: 0, y: _ }`): there are no rest patterns
+(`Some(..)`, `Shape.Rect(..)`, `Point { x: 0, .. }`) and no field shorthand
+in struct patterns (`Point { x }`), and a variant is written with one `.`
+(`Color.Red`). *(decision 0017)* Variants with their values and struct
+patterns are part of the grammar (`semantics.md` [MATCH-4], [MATCH-5]);
+before decision 0017 they were refused (#33).
 
 - **[GR-1]** Only a name or a qualified name whose first part is an import can
   be called: `f(x)`, `pkg.f(x)` (`modules.md` [IMP-6]). *(experimental,
@@ -313,6 +348,17 @@ variant is written with one `.` (`Color.Red`).
   `..b` are errors. `break` and `continue` are statements with nothing after
   them (no value, no label); in a `match` arm they are written in a block,
   `None => { break }`.
+- **[GR-9]** *(experimental, decision 0017)* In a pattern, `Name {` (or
+  `pkg.Name {`) starts a struct pattern. Inside the parentheses of a
+  constructor or the braces of another struct pattern it always does. At the
+  top of a `match` arm, where `{` after a pattern would otherwise be the block
+  of an arm whose `=>` is missing, it does when field patterns follow up to a
+  `}` (`field: pattern` or `field`, separated by `,` or line breaks, a `..`
+  last) and the arm goes on after it (`=>`, or the `->`, `|` or `if` of
+  other languages, each reported as such); otherwise the `{` is reported as
+  a missing `=>`. Field patterns are separated by `,` or line
+  breaks, as the fields of a literal ([NL-6]). A struct pattern appears only
+  in a pattern: `Point { x: a, y: b } := p` is not a declaration.
 
 ## 4. Operators
 

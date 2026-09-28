@@ -112,6 +112,19 @@ warnings, which the compiler had only for the backend's E0702.
    ([TGT-2]); it may depend on the target. The compiler reports warnings as
    it reports errors, with a code and a severity, in its human and
    structured output, from the same diagnostic.
+8. **With the floats and the enums with data** (decisions 0019 and 0017,
+   decided alongside this one). Floats have no constants: a constant of type
+   `f32` or `f64` is refused by its type, and a float literal is not a
+   constant expression ([CONST-1], [CONST-2]). An integer constant
+   expression inside `to_float`, `fma` or the values of a variant with data
+   is one like any other, and gets the warning of (7) when it traps; the
+   operand of `truncate_to_int` is a float, never a constant expression, so
+   its trap is never computed at compile time. A constant is not a pattern
+   in any of the forms of decision 0017: a name binds, and `pkg.N`, or a
+   constant as the name of a struct pattern, is an error ([CONST-1]). A
+   constant is typed, so a bound of a `for` range that is a constant gives
+   the range its type ([LOOP-3]): `for i in 0..N` with `N` of type `u8`
+   iterates `u8`.
 
 ## Alternatives considered
 
