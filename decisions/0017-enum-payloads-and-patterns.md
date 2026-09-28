@@ -2,7 +2,10 @@
 
 - Status: Accepted — **experimental** (proposed with task
   TASK-20260926-034 of the master plan of 2026-09-26, Phase 5; open to the
-  author's review)
+  author's review; the budget of the analysis (item 10), `..` in struct
+  patterns (item 8), the absence of a test of a variant (item 4) and the
+  payloads without overlap (item 5) are reviewed by the author at the gate
+  of 0.1)
 - Date: 2026-09-28
 - Spec: `syntax.md` §3 (`enum_decl`, `variant`, `pattern`, the note after
   the grammar), [GR-9]; `semantics.md` [TY-1], [TY-3], [DECL-6], §2.2
@@ -86,7 +89,11 @@ payloads of every enum.
 4. **No equality** ([ENUM-4], [NUM-5]). `==` and `!=` stay defined for an enum
    whose variants hold no data; for an enum with a variant that holds data
    they are an error, with a note to use `match`. Structs have no equality
-   either (`OPEN.md` #32), nor `Option` and `Result`.
+   either (`OPEN.md` #32), nor `Option` and `Result`. Testing which variant a
+   value holds therefore takes a `match` of two arms; a form that tests a
+   variant and reads only the tag (`s is Shape.Empty`) is recorded in
+   `OPEN.md` #32 as a request of use. The author reviews this refusal at the
+   gate of 0.1.
 5. **Layout** ([ENUM-5], [STRUCT-8]; `OPEN.md` #35, in part). An enum without
    data is its one-byte tag, as before. An enum with data is laid out as
    `{ tag: u8, payload of variant 0, payload of variant 1, … }`: the tag is
@@ -101,7 +108,12 @@ payloads of every enum.
    variant its tag, the offset and size of its payload and the offset, size
    and alignment of each value. Only the tag and the payload of the variant a
    value holds are written; a `match` reads a payload only after testing the
-   tag of its variant, so an inactive payload is never read.
+   tag of its variant, so an inactive payload is never read. The sum costs
+   space and copies: `Wide` of the compiler's `tests/layout/enums.yxy` takes
+   88 bytes on 64-bit targets, 64 with overlapped payloads (the tag, then its
+   largest payload, 56 bytes at offset 8), and every copy copies the sum.
+   The author reviews it at the gate of 0.1; the overlap stays tied to the
+   check of the data layout and the B0 measurements (`OPEN.md` #35).
 6. **The C boundary** ([ABI-2]). Enums do not cross it, with data or without,
    as before: their layout is not a stable ABI.
 7. **Patterns of variants** ([MATCH-4]). `Shape.Rect(w, 0)` matches a
@@ -124,7 +136,13 @@ payloads of every enum.
    a private field cannot be matched with a struct pattern ([VIS-2]). A
    `match` on a struct is now valid, and its subject may be bound whole
    (`p => p.x`), as any value. Struct patterns appear only in `match` arms,
-   not in declarations (`Point { x: a, y: b } := p` stays refused).
+   not in declarations (`Point { x: a, y: b } := p` stays refused). The cost
+   of having no `..`: a struct of another package with a private field is
+   never matched with a struct pattern (E0820 of the compiler), only bound
+   whole and read through its `pub` fields, which is where other languages
+   need `..`; a `..` that stands only for the private fields of such a
+   struct, ignoring no public field without saying so, is the extension
+   recorded in `OPEN.md` #33. The author reviews it at the gate of 0.1.
 9. **Exhaustiveness over fields and values** ([MATCH-1], [MATCH-2]). A
    `match` covers every value of its type, field by field and value by value,
    and names a value it does not cover (`Shape.Rect(_, false)`,
@@ -137,8 +155,22 @@ payloads of every enum.
     `match` needs more, it is an error ("this `match` is too large to
     check"), with a note to split it; the compiler never runs away on it. The
     compiler states the budget in its own terms (the cells of pattern
-    matrices it reads) in its documentation; a `match` a person writes needs
-    a small fraction of it.
+    matrices it reads) in its documentation. It reads the arms through an
+    index by their first constructor, so that a table of literals is checked
+    in work linear in its arms. Measured with the compiler of this decision
+    (its `STATUS.md`, R809): a `match` a person writes needs a small fraction
+    of the budget (the largest of its test suite, 187 cells of 4 000 000);
+    generated tables are accepted up to 300 000 arms of integer literals,
+    155 × 155 arms on a struct of two enums (every pair an arm), 7 000 arms
+    of 4-byte keys and a struct of 16 000 fields; the worst case, `2n` arms
+    on a struct of `n` booleans that each test one field, is refused from
+    `n = 14`. Which programs are valid thus depends on the budget and on the
+    algorithm: a larger budget, or an algorithm that spends less on every
+    `match`, only accepts more programs; a smaller budget after the language
+    opens would refuse some.
+    No minimum that every compiler must accept is fixed yet; whether the
+    specification fixes one (a number of arms of a table of literals, of
+    pairs of two enums) is for the author at the gate of 0.1.
 
 ## Alternatives considered
 
@@ -234,3 +266,9 @@ payloads of every enum.
 - The MIR-0 and its verifier (master plan, Phase 6): the lowering of `match`
   on a control-flow graph, which will check that no payload is read before its
   tag.
+- The author's review, at the gate of 0.1, of the questions of the review of
+  2026-09-28 (control repository): the budget of [MATCH-6] (its value and
+  unit, and a minimum fixed by the specification, when generators of real
+  programs exist); `..` in struct patterns, at least for the private fields
+  of a struct of another package (`OPEN.md` #33); a test of a variant
+  without `==` (`OPEN.md` #32); payloads summed or overlapped (`OPEN.md` #35).
