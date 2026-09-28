@@ -65,12 +65,13 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   (`10u8`) and values above 2^128 − 1 are errors. There is no octal.
 - **[LEX-10]** An integer literal has no type of its own: its type comes from
   context (see `semantics.md` [TY-4]).
-- **[LEX-11]** `1.5` is rejected as an unsupported floating-point literal.
+- **[LEX-11]** *(decision 0019)* `1.5` is a float literal ([LEX-19]).
   Character literals (`'x'`) are not supported: a code point is not a type in
   this version, and text of one character is a string literal, `"x"`. A
   double-quoted literal is the path of an import right after `import`
   ([LEX-17]), and a string literal anywhere else ([LEX-18]).
-  *(Before decision 0015 a string literal was refused outside an import.)*
+  *(Before decision 0015 a string literal was refused outside an import;
+  before decision 0019 a float literal was refused.)*
 - **[LEX-17]** The double-quoted literal right after `import` is the path of
   the import (`modules.md` [IMP-1]): on one line, without escape sequences,
   printable ASCII only; its content is checked by `modules.md`
@@ -97,6 +98,30 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   a reader sees equal to the bytes the program holds, whatever the
   normalization or look-alike characters of an editor; allowing UTF-8 written
   as itself later would only accept more programs.
+
+- **[LEX-19]** *(experimental, decision 0019)* A **float literal** is decimal
+  digits, `.`, decimal digits, and an optional exponent `e` or `e-` followed
+  by decimal digits:
+
+  ```ebnf
+  FLOAT  = dec "." digits [ "e" [ "-" ] dec ] ;
+  digits = digit { [ "_" ] digit } ;
+  ```
+
+  `dec` is the decimal integer of [LEX-9] (no leading zeros), and `_`
+  separates two digits as in integers (`1_000.000_1`). Each form has one
+  spelling (a value can still be written in several forms: `1.5`, `1.50`,
+  `15.0e-1`): `1.` (no digits after `.`), `1e5` (an exponent without the
+  fraction), `1.5E3` (a capital `E`), `1.5e+3` (a `+`) and `1.0e05`
+  (leading zeros in the exponent) are errors, each with a mechanical fix to
+  the one spelling of its form (`1.0`, `1.0e5`, `1.5e3`, `1.5e3`,
+  `1.0e5`); `.5` is read as `.` followed by `5` and so is refused as a
+  malformed expression. A type suffix (`1.5f32`), leading zeros (`007.5`),
+  a misplaced `_` and an exponent without digits are errors without a fix.
+  There are no hexadecimal float literals and no literals for infinities or
+  NaN. `1.len` and `1..2` are an integer followed by `.`, not a float. A
+  float literal has no type of its own: its type comes from context
+  (`semantics.md` [TY-4], [FLT-2]).
 
 ```ebnf
 PATH      = '"' path_char { path_char } '"' ;
@@ -222,7 +247,7 @@ postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a n
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
-primary     = INT | STRING | "true" | "false" | IDENT | HOLE
+primary     = INT | FLOAT | STRING | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" INT "]"
@@ -233,13 +258,16 @@ field_init  = IDENT ":" expr ;
 match       = "match" head "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
 arm         = pattern "=>" ( expr | block ) ;
 pattern     = "_" | "true" | "false" | [ "-" ] INT | "(" ")"
+            | [ "-" ] FLOAT                          (* parsed, always an error: [FLT-10] *)
             | IDENT                                  (* binding, or `None` *)
             | IDENT "(" pattern ")"                  (* Some, Ok, Err *)
             | IDENT "." IDENT                        (* Enum.Variant *)
             | IDENT "." IDENT "." IDENT ;            (* import.Enum.Variant *)
 ```
 
-Patterns have no other forms in this version: or-patterns (`p | q`), guards
+A float literal is parsed as a pattern only to be refused: floats are matched
+by `_` or a binding (`semantics.md` [FLT-10], decision 0019). Patterns have
+no other forms in this version: or-patterns (`p | q`), guards
 (`pattern if condition`) and ranges (`a..b`) are open (`decisions/OPEN.md`
 #46), struct patterns too (#33), and an index is one expression, never a
 range (`s[i..j]`, #47). Each is rejected with a diagnostic of its own
