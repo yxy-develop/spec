@@ -38,7 +38,9 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
    a `mut` local variable (`v.f.g = value`); parameters stay immutable.
 3. **Nothing implicit.** No equality or ordering operators, no methods, no
    generics, no patterns for structs (a `match` on a struct is an error), no C
-   ABI. A struct value is never discarded silently.
+   ABI. A struct value is never discarded silently. *(Patterns: changed by
+   decision 0017, which gives structs struct patterns, `S { f: p, … }`, and
+   makes a `match` on a struct valid.)*
 4. **Evaluation order.** Field values are evaluated in the order they are
    **written**, each completely, before the struct exists; a failure or a `?`
    in one field prevents the later ones. `v.f = value` evaluates `value`, then
