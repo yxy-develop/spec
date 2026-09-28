@@ -3,6 +3,10 @@
 - Status: Accepted — experimental
 - Date: 2026-09-25
 - Spec: `semantics.md` §4
+- Amendment (2026-09-28, experimental): decision 0015 adds a second
+  reference type, borrowed text `&str`, whose values view constant data and
+  may therefore also be returned (`semantics.md` [TEXT-6]); what this
+  decision says of `&[T]` does not change.
 
 ## Decision
 

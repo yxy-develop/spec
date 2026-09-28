@@ -13,9 +13,10 @@ compiler's diagnostic codes are listed in the compiler repository
   or one standalone file; each file starts with `package <name>`.
 - **[PRG-2]** Items are enums, structs and functions. Item names are unique in
   the package, across its files (`modules.md` [PKG-4]). The prelude names —
-  `bool`, the integer type names, `Option`, `Result`, `Some`, `None`, `Ok`,
-  `Err`, the operations in §6.4 and §6.5 — can not be redefined, neither as
-  items, import names, parameters or local variables.
+  `bool`, the integer type names, `str`, `Console` *(decision 0015)*,
+  `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and
+  §6.5 — can not be redefined, neither as items, import names, parameters or
+  local variables.
 - **[PRG-3]** An executable program has `fn main()` (§10). A package without
   `main` can be compiled to an object and linked with other code. An
   executable package cannot be imported (`modules.md` [PKG-8]).
@@ -34,6 +35,8 @@ compiler's diagnostic codes are listed in the compiler repository
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
 | `[T; N]` | exactly `N` elements | local variables only, created from a literal (`[a, b]` or `[v; N]`) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
+| `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
+| `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
 - **[TY-1]** *Value types* are `bool`, the integers, `()`, enums, structs, and
   `Option` and `Result` of value types. They are copied on assignment, when
@@ -159,7 +162,10 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[REF-2]** References cannot escape: no function returns a slice, and slices
   cannot be stored in arrays, `Option` or `Result`. A slice parameter or local
   therefore never outlives the array it views. This is a restriction of the
-  subset, not a borrow checker; wider borrowing rules are future work.
+  subset, not a borrow checker; wider borrowing rules are future work. Text
+  (`&str`, §4.1) views constant data, which outlives every function, so a
+  function may return it ([TEXT-6]); the slice `t.bytes` of a text follows
+  this rule like any slice.
 - **[REF-3]** `s.len` is the number of **elements** of an array or slice, of
   type `usize`. In this version `s` names the array or slice: a local
   variable or a parameter.
@@ -174,6 +180,48 @@ compiler's diagnostic codes are listed in the compiler repository
   #47), changes no valid program.
 - **[REF-5]** All types of this version are copied; there are no move-only
   values yet, so use-after-move cannot occur.
+
+### 4.1 Text *(experimental, decision 0015)*
+
+Only borrowed text exists in this version; the owned string waits for
+ownership (`decisions/OPEN.md` #6, #7). Bytes (`&[u8]`), text (`&str`) and
+the owned string are distinct types, with no implicit conversion between
+them.
+
+- **[TEXT-1]** A string literal ([LEX-18]) has type `&str`: a read-only view
+  of the UTF-8 encoding of its characters, which lives for the whole
+  execution (constant data of the program). No text is copied or allocated
+  in this version.
+- **[TEXT-2]** Every `&str` value is valid UTF-8: literals are checked when
+  they are read ([LEX-18]), and no operation of this version makes text from
+  other bytes. A conversion of `&[u8]` to text, validated, returning a
+  `Result` and never trapping, is future work (OPEN #7).
+- **[TEXT-3]** `t.len` is the number of **bytes** of the text `t`, of type
+  `usize`, for any expression `t` of type `&str`: `"a\u{E7}\u{E3}o".len`
+  (`ação`) is 6. No operation of this version counts code points or grapheme
+  clusters, and no text operation is named after characters without its
+  unit.
+- **[TEXT-4]** `t.bytes` is a `&[u8]` over the same bytes; nothing is copied.
+  It follows the rules of slices ([REF-2]–[REF-4]): to index it, name it
+  first (`b := t.bytes`, then `b[i]`).
+- **[TEXT-5]** `a == b` and `a != b` compare two texts byte by byte: they are
+  equal when they have the same length and the same bytes. There is no
+  normalization: `"e\u{301}"` (3 bytes) is not equal to `"\u{E9}"` (2
+  bytes). Text has no ordering.
+- **[TEXT-6]** Text may be a parameter, a local variable (also `mut`,
+  assigned other text), the result of a function and the value of a `match`.
+  It cannot be stored in arrays, `Option`, `Result` or struct fields, and does
+  not cross the C boundary ([ABI-2]). A function may return text because
+  every `&str` of this version views constant data, also text it received
+  as a parameter (unlike a slice, [REF-2]); when text that views other data
+  exists, returning it follows the ownership rules, which must keep such
+  programs valid (OPEN #6, decision 0015).
+- **[TEXT-7]** Not in this version, each rejected with its own diagnostic:
+  concatenation (`+`), indexing (`t[i]`), ordering (`<`), the owned string
+  (`String`), `str` without `&`, `&mut str`, `char` and character literals,
+  formatting (formatting functions, format strings, `print` with several
+  arguments), sub-slices, fields and methods of text other than `.len` and
+  `.bytes`, and `match` on text.
 
 ## 5. Functions and cells
 
@@ -306,7 +354,8 @@ hold in every build mode; there is no unchecked release mode.
 
 - **[TRAP-1]** A trap writes one report to standard error and ends the
   process with exit status **101**. The report names the kind of failure (the
-  table of §6.2) and the position of the checked operation,
+  table of §6.2, or a refused console write, [CON-4]) and the position of the
+  checked operation,
   `<file>:<line>:<column>`; by default it is one line of text,
   `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
   and site are experimental, [TRAP-3])*. It runs no cleanup and is not
@@ -378,9 +427,10 @@ Both operands have the same integer type, taken from them or from context.
   not mean that the function cannot trap, always terminates, reads no
   arguments, or costs nothing.
 - **[EFF-2]** Tracked effects in this version: `ffi` — calling code outside
-  Yxy. Other names are errors. The set will grow as the standard library
-  appears. Which concerns become effects is not settled: console, files,
-  network, clock and randomness are candidates, and allocation has facets of
+  Yxy — and *(experimental, decision 0015)* `console` — writing through a
+  `Console` capability ([CON-3]). Other names are errors. The set will grow as
+  the standard library appears. Which other concerns become effects is not
+  settled: files, network, clock and randomness are candidates, and allocation has facets of
   an effect, a capability and a type, to be decided with ownership
   (`decisions/OPEN.md` #6). *(experimental)* The criterion of
   `decisions/OPEN.md` #9 (type, contract, effect or capability) is applied to
@@ -417,13 +467,49 @@ Both operands have the same integer type, taken from them or from context.
 |---|---|
 | call to a Yxy function | the callee's declared effects |
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
-| operators, indexing, `.len`, §6.4, §6.5 | no tracked effect; may trap (§6.2) |
+| operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
+| operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5 | no tracked effect; may trap (§6.2) |
 | trap | not an effect; it writes its message to standard error and ends the process |
 | typed failure (`Result`, `require`, `?`) | not an effect; it is in the return type |
 | mutation of a local `mut` variable | not an effect |
 | allocation | does not exist in this version |
 
 Static effect checking is not an operating-system sandbox.
+
+### 7.1 The console capability *(experimental, decision 0015)*
+
+A capability is a value that carries authority over a resource; an effect
+describes what may happen. The console has both: the capability says which
+stream, the effect that a write may happen.
+
+- **[CON-1]** `Console` is a capability: the authority to write to the
+  process's standard output. No expression creates one: the runtime of a
+  hosted program gives it to `main` ([MAIN-1]), and a function that writes to
+  it receives it as a parameter. There is no global console: there are no
+  global variables ([INIT-1]). A `Console` may be a parameter or a local
+  variable; passing or copying it copies the authority, not the stream. It
+  cannot be returned or stored in a struct, an array, `Option` or `Result`,
+  and does not cross the C boundary, so that the parameters of a function
+  show every console it can reach.
+- **[CON-2]** Operations, called with the capability before `.` ([GR-1]):
+  `console.print(text: &str)` writes the bytes of the text and nothing else
+  (no line break); `console.print_u64(value: u64)` and
+  `console.print_i64(value: i64)` write the value in decimal, `-` before a
+  negative one, with no padding. Each returns `()`. `Console` has no other
+  operation.
+- **[CON-3]** Each operation performs the effect `console`: the function that
+  calls one must declare it, and [EFF-3] carries it to every caller.
+  Holding a `Console` without declaring `console` gives no way to write, and
+  declaring `console` without receiving a `Console` gives none either.
+- **[CON-4]** An operation writes all its bytes before it returns, in order
+  and without buffering, so that output written before a trap is kept
+  ([TRAP-1]); empty text writes nothing. When the stream refuses a write
+  (it is closed for writing, a device fails, the disk is full, or a signal
+  interrupts the write) the program traps with the kind *console write
+  failed* at the operation ([TRAP-1], [TRAP-3]). The operations are not
+  recoverable and are documented as trapping. On a pipe whose reader has
+  gone, the operating system's default for SIGPIPE applies (it ends the
+  process); a program does not change signal dispositions.
 
 ## 8. The C boundary
 
@@ -502,9 +588,13 @@ Static effect checking is not an operating-system sandbox.
 
 ## 10. Entry point
 
-- **[MAIN-1]** `fn main()` takes no parameters and returns `()` (exit status 0)
-  or `u8` (the exit status). It declares its effects like any function. How
-  capabilities reach `main` in a hosted environment is future work.
+- **[MAIN-1]** `fn main()` takes no parameters, or *(experimental, decision
+  0015)* one parameter of type `Console`, `fn main(console: Console)` (any
+  name), which the runtime of a hosted program gives: the console of
+  standard output ([CON-1]). It returns `()` (exit status 0) or `u8` (the
+  exit status), and declares its effects like any function. How the other
+  capabilities (files, network, clock, randomness) reach `main` is future
+  work (`decisions/OPEN.md` #9).
 
 ## 11. Incomplete programs
 
@@ -522,7 +612,8 @@ Static effect checking is not an operating-system sandbox.
 ## 12. Outside this version
 
 Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
-generics, traits, closures, function values, method calls, `for`, `loop`,
+generics, traits, closures, function values, method calls (other than the
+operations of a `Console`, [CON-2]), `for`, `loop`,
 `break`, `continue`, compound assignment (`+=` and the other `op=` forms),
 dependencies on other modules, manifest requirements,
 the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
@@ -530,7 +621,8 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
-strings, characters, floating point, 128-bit integers, concurrency (`par`,
+owned strings, characters, the text operations of [TEXT-7], floating point,
+128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, generic enums, mutable slices, enums
 without variants and enums with more than 256 variants; for structs: generic
 structs, structs without fields, arrays and slices as fields, recursive

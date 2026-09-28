@@ -64,16 +64,44 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
 - **[LEX-10]** An integer literal has no type of its own: its type comes from
   context (see `semantics.md` [TY-4]).
 - **[LEX-11]** `1.5` is rejected as an unsupported floating-point literal.
-  String (`"..."`) and character (`'x'`) literals are not supported yet; a
-  double-quoted literal is valid only as an import path ([LEX-17]).
-- **[LEX-17]** A double-quoted literal is valid only as the path of an import
-  (`modules.md` [IMP-1]): on one line, without escape sequences, printable
-  ASCII only; its content is checked by `modules.md` [PATH-1]–[PATH-5].
-  Anywhere else it is an unsupported string literal ([LEX-11]).
+  Character literals (`'x'`) are not supported: a code point is not a type in
+  this version, and text of one character is a string literal, `"x"`. A
+  double-quoted literal is the path of an import right after `import`
+  ([LEX-17]), and a string literal anywhere else ([LEX-18]).
+  *(Before decision 0015 a string literal was refused outside an import.)*
+- **[LEX-17]** The double-quoted literal right after `import` is the path of
+  the import (`modules.md` [IMP-1]): on one line, without escape sequences,
+  printable ASCII only; its content is checked by `modules.md`
+  [PATH-1]–[PATH-5].
+- **[LEX-18]** *(experimental, decision 0015)* Anywhere else a double-quoted
+  literal is a **string literal**, whose value is text (`semantics.md`
+  [TEXT-1]). It closes on the line where it starts. Inside it, only printable
+  ASCII (U+0020–U+007E) other than `"` and `\` stands for itself; everything
+  else is written as an escape:
+
+  | Escape | Value |
+  |---|---|
+  | `\n` `\t` `\r` `\0` | line feed, tab, carriage return, NUL |
+  | `\\` `\"` | `\` and `"` |
+  | `\u{H…}` | the code point of 1 to 6 hexadecimal digits (either case), which must be a Unicode scalar value: not a surrogate (U+D800–U+DFFF), at most U+10FFFF |
+
+  Any other escape, a malformed `\u{…}`, a character outside printable ASCII
+  written as itself (a non-ASCII letter, a tab) and a literal that does not
+  close on its line are errors; for a character written as itself the
+  mechanical fix is its escape, with the same bytes (`ç` becomes `\u{E7}`).
+  The characters of [LEX-3a] are errors here as everywhere. The value of the
+  literal is the UTF-8 encoding of its characters, escapes decoded, so it is
+  always valid UTF-8. Writing non-ASCII text through escapes keeps the bytes
+  a reader sees equal to the bytes the program holds, whatever the
+  normalization or look-alike characters of an editor; allowing UTF-8 written
+  as itself later would only accept more programs.
 
 ```ebnf
 PATH      = '"' path_char { path_char } '"' ;
 path_char = (* printable ASCII other than '"'; the path is then checked by modules.md [PATH-1]–[PATH-5] *) ;
+STRING    = '"' { text_char | escape } '"' ;          (* [LEX-18]; one line *)
+text_char = (* U+0020–U+007E other than '"' and '\' *) ;
+escape    = '\' ( "n" | "t" | "r" | "0" | '\' | '"' ) | '\u{' hexdigit [ hexdigit ] [ hexdigit ] [ hexdigit ] [ hexdigit ] [ hexdigit ] "}" ;
 ```
 
 ### 1.4 Markers and punctuation
@@ -182,11 +210,11 @@ type        = qual_name [ "<" type { "," type } ">" ]
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" ) unary | postfix ;
-postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name or import.name *)
+postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name or console.operation *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
-primary     = INT | "true" | "false" | IDENT | HOLE
+primary     = INT | STRING | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" INT "]"
@@ -213,8 +241,13 @@ written `_` (`Some(_)`): there are no rest patterns (`Some(..)`), and a
 variant is written with one `.` (`Color.Red`).
 
 - **[GR-1]** Only a name or a qualified name whose first part is an import can
-  be called: `f(x)`, `pkg.f(x)` (`modules.md` [IMP-6]). Method calls (`x.f()`)
-  are not supported.
+  be called: `f(x)`, `pkg.f(x)` (`modules.md` [IMP-6]). *(experimental,
+  decision 0015)* The one exception is an operation of a `Console`
+  capability, written with the capability before `.`: `console.print(x)`,
+  where `console` is a parameter or local variable of type `Console`
+  (`semantics.md` [CON-2]); names of imports and of variables never collide
+  ([IMP-5]), so the first name says which form it is. Other method calls
+  (`x.f()`) are not supported.
 - **[GR-2]** A cell occupies the whole function body. Region headers after
   ordinary statements, or inside nested blocks, are errors.
 - **[GR-3]** *(experimental)* `if` is a statement, not an expression.
@@ -254,8 +287,10 @@ variant is written with one `.` (`Color.Red`).
   `match` within a field value) is reported too; the fix of the outer literal
   already includes the inner one.
 - **[GR-7]** `.` followed by a name is a field access (`p.x`, `a.b.c`), the
-  length of an array or slice (`s.len`), or a variant (`Enum.Variant`);
-  which one is decided by what precedes the `.` (`semantics.md` §2.1).
+  length of an array or slice (`s.len`), the length in bytes or the byte view
+  of text (`t.len`, `t.bytes`, `semantics.md` [TEXT-3], [TEXT-4]), or a
+  variant (`Enum.Variant`); which one is decided by what precedes the `.`
+  (`semantics.md` §2.1).
   Struct literals have no field shorthand (`Point { x, y }`) and no update
   syntax (`Point { x: 1, ..p }`).
 
@@ -263,7 +298,7 @@ variant is written with one `.` (`Color.Red`).
 
 | Precedence (high → low) | Operators | Associativity |
 |---|---|---|
-| 11 | postfix: call, `[i]`, `.name` (field, `.len`, variant), `?` | left |
+| 11 | postfix: call, `[i]`, `.name` (field, `.len`, `.bytes`, variant), `?` | left |
 | 10 | prefix: `-` `!` `&` | right |
 | 9 | `*` `/` `%` | left |
 | 8 | `+` `-` | left |

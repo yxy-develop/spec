@@ -9,6 +9,10 @@
   (`OPEN.md` #6); the classification criterion of `OPEN.md` #9 (a research
   recommendation of the architecture audit of 2026-09-26, experimental) is
   applied to each candidate. `ffi` remains the only tracked effect.
+- Amendment (2026-09-28, experimental): decision 0015 adds a second tracked
+  effect, `console`, performed by the operations of the first capability,
+  `Console` (`semantics.md` [EFF-2], [CON-3]). Item 2 below reads "`ffi`
+  and `console`"; the other items do not change.
 
 ## Decision
 
