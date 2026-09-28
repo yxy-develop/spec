@@ -3,7 +3,8 @@
 - Status: Accepted — **experimental** (proposed with task TASK-20260926-035
   of the master plan of 2026-09-26, Phase 5, after the architecture audit of
   2026-09-26: T19, option (2), a research recommendation, and §21 C2,
-  option (1), with correction 4 of its legend; open to the author's review)
+  option (1), with correction 4 of its legend; revised after its review of
+  2026-09-28; open to the author's review at the gate of 0.1, below)
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-5], [LEX-6], §3 (`const_decl`, the length of
   `[T; N]` and of `[value; N]`); `semantics.md` [PRG-2], the table of §2,
@@ -54,10 +55,13 @@ warnings, which the compiler had only for the backend's E0702.
    package level only.
 2. **Constant expressions** ([CONST-2]). The value is made of integer
    literals, `true`, `false`, names of constants (`N`, `pkg.N`), the
-   operators of §4 and grouping parentheses; nothing else — no call (not
-   `widen`, not `checked_add`: there is no `const fn`), no variable, no
-   field, `match`, text or array. It is typed by the rules of function
-   bodies.
+   operators of §4, grouping parentheses and `widen(x)` of a constant
+   expression: the conversion of [CONV-1], which never traps, keeps the
+   value and has the same rule on every target, so that a size of `usize`
+   gives a wider constant (`const BYTES: u64 := widen(SLOTS) * 8`, computed
+   in `u64`). Nothing else — no other call (not `checked_convert`, not
+   `checked_add`: there is no `const fn`), no variable, no field, `match`,
+   text or array. It is typed by the rules of function bodies.
 3. **Evaluation** ([CONST-3]). The compiler computes every constant of the
    program, used or not, before code generation, by the rules of §6 on the
    target's data model: left to right, `&&` and `||` evaluating their right
@@ -70,21 +74,32 @@ warnings, which the compiler had only for the backend's E0702.
    at run time by the three engines — the check that T19 asks for.
 4. **Limits** ([CONST-4], [INIT-2]). A constant that reads itself, directly
    or through others, is an error. The *steps* of a constant are its
-   literals, operators and names, and a name of a constant also counts the
-   steps of that constant: the size of the expression with every constant
-   written out, which is the work an evaluator that remembers nothing would
-   do, so the limit does not depend on how the compiler computes. A
-   constant of more than 1 000 000 steps is an error. Both are found from
-   the names before anything is computed, the same on every target, and the
-   check always ends.
+   literals, operators, `widen` and names, and a name of a constant also
+   counts the steps of that constant: the size of the expression with every
+   constant written out, which is the work an evaluator that remembers
+   nothing would do, so the limit does not depend on how the compiler
+   computes. A constant of more than 1 000 000 steps is an error, and so is
+   an array length or count of more, counted the same way: an expression is
+   refused as a length exactly when it is refused as a constant. Both are
+   found from the names before anything is computed, the same on every
+   target, and the check always ends. The constant expressions of function
+   bodies, computed only for the warnings of (7), are not limited: they read
+   the values of constants already limited, their own size bounds the work,
+   and a warning decides nothing.
 5. **Array lengths** ([CONST-5]). The length of `[T; N]` and the count of
-   `[value; N]` are constant expressions of type `usize`.
+   `[value; N]` are constant expressions of type `usize`, under the limit
+   of (4).
 6. **Targets** ([CONST-6], [TGT-2]). A constant's value, and so its
    validity, may depend on the target only through the range and width of
    `usize` and `isize`, exactly as a literal's does: `65536 * 65536` in
    `usize` is 2^32 on a 64-bit target and an error on a 32-bit one. A
-   constant of a fixed-width type has the same value on every target.
-   [TGT-2] says so in its text.
+   constant whose value reads no `usize` or `isize` value has the same
+   value on every target; one that reads one may differ, whatever its own
+   type (a comparison of type `bool`, a `widen` to `u64`).
+   [TGT-2] says so in its text. With (3), every constant computed, a
+   `pub const` that is an error on 32-bit targets only makes every program
+   that imports its package invalid there, even one that never reads it;
+   [CONST-6] and OPEN #50 say so.
 7. **Certain traps** ([CONST-7]). An operation of a function body whose
    operands are constant expressions, and whose computation traps, does not
    make the program invalid: the program traps when it evaluates the
@@ -101,6 +116,12 @@ warnings, which the compiler had only for the backend's E0702.
 ## Alternatives considered
 
 - **No constants** (T19 (1)): leaves sizes written again at each use.
+- **Calls in constant expressions.** None, as the first text of this
+  decision had it: a size of `usize` could not give a constant of a wider
+  type, which had to be written again as a second constant with the same
+  number. `const fn` (T19 (3)): below. Chosen: `widen` alone: it never
+  traps and its rule does not depend on the target ([CONV-1]), so it adds
+  a step and no case of failure to (3).
 - **`const fn` run by the reference evaluator** (T19 (3)): needs limits of
   steps and memory in the evaluator, and the three engines would share one
   computation of every constant; kept as a later experiment (OPEN #50),
@@ -116,13 +137,14 @@ warnings, which the compiler had only for the backend's E0702.
   [TEXT-1]), enums, structs, arrays, floats: each needs rules of its own
   (equality, layout in the facts, rounding for floats, decision 0019);
   integers and `bool` cover sizes, masks and flags. Adding the others later
-  only accepts more programs.
+  only accepts more programs; `&str` is the cheapest next step (OPEN #50).
 - **Constants inside functions.** An immutable local already names a value
   there; a local constant would be needed only for a length computed from
   names of the function, which (5) allows from package constants. Later,
   if programs need it; accepting it then changes no valid program.
 - **Evaluating only the constants a program uses** (lazily): the validity
-  of a declaration would depend on its uses. Chosen: every constant.
+  of a declaration would depend on its uses. Chosen: every constant, with
+  its consequence for a `pub const` valid on 64-bit targets only, in (6).
 - **The measure of the limit.** Steps of an evaluator that remembers the
   values it computed (the work of this compiler): it would change with the
   implementation, and a program valid for one compiler could be invalid for
@@ -142,15 +164,21 @@ warnings, which the compiler had only for the backend's E0702.
 - **What a certain trap is.** Also an operation that traps whatever its
   variable operand is (a division by the constant 0, a shift by a constant
   at least the width, a constant index of an array whose length is known):
-  never false either, but it would warn on `tests/run/traps.yxy` (`one <<
-  64`), and on the audit's `sure.yxy` it finds four traps instead of one.
-  With constants propagated through immutable locals: it would warn on the
-  traps of `tests/run/traps.yxy`, which the input may never reach. Both
-  stay experiments (OPEN #50); the rule chosen is the one the compiler also
-  uses for constants, so one sentence explains both.
+  never false either, and on the audit's `sure.yxy` it finds four traps
+  instead of one. Its warnings on the conformance suite
+  (`tests/run/traps.yxy`, `one << 64`) would be true: the traps there are
+  deliberate. With constants propagated through immutable locals: it would
+  warn on the traps of `tests/run/traps.yxy`, which the input may never
+  reach. Both stay experiments (OPEN #50). The rule chosen gives no warning
+  at all on the conformance suite and the examples, so that a warning, when
+  one appears, is news, and it is the rule the compiler also uses for
+  constants, so one sentence explains both.
 - **A separate series of codes for warnings** (`W…`): the compiler already
   reports a warning with an `E` code and the severity `warning` (E0702),
-  and tools filter by severity. Chosen: the same convention.
+  and tools filter by severity; a series of its own later would rename
+  documented codes. Chosen: the same convention. Levels of warnings and the
+  warnings of the packages of other modules: OPEN #50, before the first
+  dependency is published.
 
 ## What could change it
 
@@ -160,9 +188,36 @@ warnings, which the compiler had only for the backend's E0702.
 - Floats (decision 0019): constants of `f32` and `f64`, with the rounding of
   their literals and operations.
 - Programs that need constants of text, enums or structs, constants inside
-  functions, constants in patterns (`match x { N => … }`), or conversions
-  (`widen`) in constant expressions.
+  functions, constants in patterns (`match x { N => … }`), or calls other
+  than `widen` in constant expressions.
 - Programs that reach the limit of steps, or a measure of a later evaluator
   that needs another one.
 - Warnings in real use: the broader rules of certain traps, levels of
   warnings (allowed, denied), and warnings of the packages of other modules.
+
+## For the author's review at the gate of 0.1
+
+The review of this decision (2026-09-28) put the choices below to the
+author. Each is in force, experimental until the author reviews it at the
+gate of 0.1:
+
+1. **The type of a constant** — always written ([CONST-1]). Inferring it
+   from the value, or untyped constants that take the type of their use
+   (Go), stay alternatives (above).
+2. **Where, and of what types** — at package level only, of the integer
+   types and `bool`, in 0.1. `&str` constants are the cheapest next step
+   (OPEN #50); accepting them, or local constants, later changes no valid
+   program.
+3. **Calls** — `widen` is allowed ((2)); no other call, and `const fn`
+   stays an experiment (OPEN #50).
+4. **The scope of the warning** — the rule of (7), for constant
+   expressions only. Its reason is that it gives no warning on the
+   conformance suite, not that the broader rule's warnings would be false:
+   they would be true ("What a certain trap is", above).
+5. **Every constant computed** — kept ((3)); its consequence for a
+   `pub const` valid on 64-bit targets only is in (6), [CONST-6] and
+   OPEN #50.
+6. **The code of a warning** — an `E` code with the severity `warning`, as
+   E0702 (above); levels of warnings and the warnings of the packages of
+   other modules are decided before the first dependency is published
+   (OPEN #50).

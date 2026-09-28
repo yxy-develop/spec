@@ -340,11 +340,11 @@ effects {}
   start-up and no `init` functions. Importing a package has no effect at run
   time: the only code a program runs is reached from `main`, or from an
   `export fn` called by foreign code.
-- **[INIT-2]** Compile-time constants, if they are added, are evaluated by
-  the compiler under explicit limits (as [GR-5] limits parsing), have no
-  effects, and do not run package code during resolution. *(decision 0018)*
-  Constants exist: literals, operators and other constants, without calls,
-  with the limits of `semantics.md` [CONST-4].
+- **[INIT-2]** *(decision 0018)* Compile-time constants are evaluated by
+  the compiler under explicit limits (as [GR-5] limits parsing; the steps
+  of `semantics.md` [CONST-4]), have no effects, and do not run package code
+  during resolution: they are made of literals, operators, other constants
+  and `widen`, and call no function (`semantics.md` [CONST-2]).
 - **[INIT-3]** There are no build scripts, install hooks, code generators or
   compiler plug-ins run on behalf of a package. Obtaining, verifying,
   selecting and building a module never executes code supplied by that
