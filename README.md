@@ -6,7 +6,7 @@ experimental and changes through recorded decisions until 1.0.
 | File | Content |
 |---|---|
 | `syntax.md` | Lexical structure, newline rules, grammar (EBNF), operators |
-| `semantics.md` | Types, structs, declarations, borrows, borrowed text, cells, loops, evaluation, integer rules, floating point, effects, the console capability, the C boundary, a glossary |
+| `semantics.md` | Types, structs, enums with data, declarations, borrows, borrowed text, cells, `match` and its patterns, loops, evaluation, integer rules, floating point, effects, the console capability, the C boundary, a glossary |
 | `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental; packages of one module implemented, dependencies not yet |
 | `decisions/NNNN-*.md` | Accepted language decisions, with context, alternatives and what could change them |
 | `decisions/OPEN.md` | Open questions with the provisional choice in force |
@@ -26,10 +26,10 @@ Este repositório define **como a linguagem Yxy deve se comportar**. É
 experimental e muda por decisões registradas até a versão 1.0.
 
 - `syntax.md`: léxico, regras de quebra de linha, gramática e operadores.
-- `semantics.md`: tipos, declarações, empréstimos, texto emprestado,
-  células (`@ctrl <- @eval -> @effect/@out`), laços, avaliação, aritmética inteira,
-  ponto flutuante, efeitos, a capacidade de console, fronteira com C e um
-  glossário.
+- `semantics.md`: tipos, structs, enums com dados, declarações, empréstimos,
+  texto emprestado, células (`@ctrl <- @eval -> @effect/@out`), `match` e
+  seus padrões, laços, avaliação, aritmética inteira, ponto flutuante,
+  efeitos, a capacidade de console, fronteira com C e um glossário.
 - `modules.md`: pacotes, módulos, imports, visibilidade, manifesto e lock
   (experimental; pacotes de um módulo já implementados, dependências ainda
   não).

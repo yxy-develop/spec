@@ -30,7 +30,7 @@ compiler's diagnostic codes are listed in the compiler repository
 | `u8 u16 u32 u64 usize` | unsigned integers of that width | anywhere |
 | `f32 f64` | IEEE 754 binary32 and binary64 floats *(experimental, decision 0019; §6.6)* | anywhere |
 | `()` | the single unit value `()` | anywhere; a function without `-> T` returns `()` |
-| `E` (an `enum`) | one of its variants, written `E.Variant` | anywhere |
+| `E` (an `enum`) | one of its variants, written `E.Variant`, or `E.Variant(v, …)` with the values the variant holds (§2.2) | anywhere except the C boundary ([ABI-2]) |
 | `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
 | `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
@@ -40,16 +40,17 @@ compiler's diagnostic codes are listed in the compiler repository
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
 - **[TY-1]** *Value types* are `bool`, the integers, the floats *(decision
-  0019)*, `()`, enums, structs, and `Option` and `Result` of value types.
-  They are copied on assignment, when passed and when returned. Arrays and
-  slices have value-type elements.
+  0019)*, `()`, enums (also those whose variants hold data, §2.2), structs,
+  and `Option` and `Result` of value types. They are copied on assignment,
+  when passed and when returned. Arrays and slices have value-type elements.
 - **[TY-2]** `usize` and `isize` have the pointer width of the target's data
   model: 32 or 64 bits in this version. They are distinct types from `u32`,
   `u64`, `i32` and `i64` on every target. All other integer types have the
   same width on every target.
-- **[TY-3]** Enum variants carry no data in this version, and an enum has
-  between 1 and 256 variants. `Option` and `Result` are known to the compiler;
-  user-defined generics do not exist yet.
+- **[TY-3]** *(decision 0017)* A variant of an enum may hold data (§2.2); an
+  enum has between 1 and 256 variants. `Option` and `Result` are known to the
+  compiler; user-defined generics do not exist yet. *(Before decision 0017,
+  variants carried no data.)*
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
@@ -107,10 +108,11 @@ compiler's diagnostic codes are listed in the compiler repository
   the whole value. There is no aliasing: writing a field through one variable
   never changes another variable, a caller's argument or a stored copy.
 - **[STRUCT-7]** In this version structs have no equality or ordering
-  operators (`a == b` is an error; compare fields), no methods, no patterns (a
-  `match` whose subject is a struct is an error; an `Option<S>` or
-  `Result<S, E>` is matched as usual and its payload bound to a name), and no
-  C ABI ([ABI-2]). A struct value is never discarded silently ([DECL-5]).
+  operators (`a == b` is an error; compare fields), no methods and no C ABI
+  ([ABI-2]). *(decision 0017)* A struct is matched with struct patterns
+  ([MATCH-5]), or bound whole by a name; before decision 0017 structs had no
+  patterns and a `match` on a struct was an error. A struct value is never
+  discarded silently ([DECL-5]).
 - **[STRUCT-8]** The **layout** of a struct — its size, alignment and field
   offsets — is defined by the compiler for the selected target ([TGT-1]),
   never by the machine the compiler runs on. It is an **internal** layout,
@@ -119,25 +121,68 @@ compiler's diagnostic codes are listed in the compiler repository
   compiler, fields are laid out in declaration order, each at the next offset
   that is a multiple of its alignment, and the struct is aligned to its most
   aligned field and padded to a multiple of that alignment; `bool` and enums
-  take one byte, `()` none, integers their width, aligned as the target's data
-  layout says (64-bit integers are 4-byte aligned on 32-bit x86 Linux and
-  8-byte aligned on the other supported targets; `usize`/`isize` follow
-  [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
-  `Result<T, E>` as `{ tag: u8, ok: T, err: E }`. See
-  `decisions/0012-structs-and-layout.md`.
-- **[STRUCT-9]** *(limits of this version)* A value of a struct type, or of an
-  `Option` or `Result` type, has at most 16 384 scalar components and at most
-  256 levels of nesting. Components: every integer, `bool`, enum and `()`
-  counts one, and so does the tag of every `Option` and `Result`, including
-  those inside nested structs. Nesting: each struct, `Option` and `Result`
-  that holds another value inline adds one level (a struct of scalars is one
-  level), consistent with [GR-5]. The limits apply to every struct
-  declaration and to every `Option`/`Result` type a program writes or builds
-  (`Some(v)`); an array counts as its element type, since it is never copied
-  whole ([TY-6]). Without them, a few declarations could describe a value of
-  millions of components (each struct holding two of the previous one) or a
-  chain of structs deep enough to exhaust the tools. Both measures are
-  independent of the target ([TGT-2]).
+  without data take one byte, `()` none, integers their width, aligned as the
+  target's data layout says (64-bit integers are 4-byte aligned on 32-bit x86
+  Linux and 8-byte aligned on the other supported targets; `usize`/`isize`
+  follow [TY-2]); `Option<T>` is laid out as `{ tag: u8, value: T }` and
+  `Result<T, E>` as `{ tag: u8, ok: T, err: E }`; an enum with data as
+  [ENUM-5] says. See `decisions/0012-structs-and-layout.md` and
+  `decisions/0017-enum-payloads-and-patterns.md`.
+- **[STRUCT-9]** *(limits of this version)* A value of a struct type, of an
+  enum with data (§2.2), or of an `Option` or `Result` type, has at most
+  16 384 scalar components and at most 256 levels of nesting. Components:
+  every integer, `bool`, enum without data and `()` counts one, and so does
+  the tag of every `Option`, `Result` and enum with data, including those
+  inside nested structs and enums; an enum with data counts its tag and the
+  components of the data of every variant. Nesting: each struct, enum with
+  data, `Option` and `Result` that holds another value inline adds one level
+  (a struct of scalars is one level), consistent with [GR-5]. The limits
+  apply to every struct and enum declaration and to every `Option`/`Result`
+  type a program writes or builds (`Some(v)`); an array counts as its element
+  type, since it is never copied whole ([TY-6]). Without them, a few
+  declarations could describe a value of millions of components (each struct
+  holding two of the previous one) or a chain of structs deep enough to
+  exhaust the tools. Both measures are independent of the target ([TGT-2]).
+
+### 2.2 Enums with data *(experimental, decision 0017)*
+
+- **[ENUM-1]** A variant of an enum is a name, or a name followed by the
+  types of the values it holds, in parentheses: `Rect(u32, u32)`. A variant
+  written with parentheses holds at least one value (`V()` is an error). The
+  types are value types other than arrays, as for struct fields
+  ([STRUCT-1]): integers, the floats *(decision 0019)*, `bool`, `()`, enums,
+  structs, `Option` and `Result`; slices, text and capabilities are not. Named fields
+  (`V { a: T }`) are not supported: a variant holds a struct for them. An
+  enum mixes variants with and without data in any order. An enum that holds
+  itself — directly, inside `Option` or `Result`, or through structs and
+  other enums — would have infinite size and is an error ([STRUCT-2]). The
+  data of the variants of a `pub enum` is part of its interface: its types
+  are public ([VIS-3]).
+- **[ENUM-2]** `E.V(e1, …, en)`, or `pkg.E.V(e1, …, en)` for an enum of an
+  imported package, builds variant `V` with one value per type it declares,
+  each checked against its type (an integer literal takes its type from it,
+  [TY-4]). The values are evaluated in the order they are written, each
+  completely, before the enum value exists; a trap, or a `?` that returns, in
+  one value prevents the evaluation of the later ones ([ORD-5]). A variant
+  with data is always written with its values (`E.V` alone is an error), and
+  a variant without data without parentheses (`E.V()` is an error).
+- **[ENUM-3]** An enum with data is a value ([TY-1]): declaring, assigning,
+  passing, returning and storing it in other values copy it whole, with its
+  data, as for structs ([STRUCT-6]); there is no aliasing.
+- **[ENUM-4]** `==` and `!=` are not defined for an enum that has a variant
+  with data; it is inspected with `match` ([NUM-5]). An enum without data
+  keeps them.
+- **[ENUM-5]** The layout of an enum is internal, like that of a struct
+  ([STRUCT-8]), and tools report it (`yxy inspect --json`). An enum without
+  data is its one-byte tag. In the current compiler an enum with data is laid
+  out as `{ tag: u8, payload of each variant, in declaration order }`: the
+  tag is the variant's number in declaration order, counted from 0; the
+  payload of a variant with data is laid out as a struct of its values, in
+  order ([STRUCT-8]); the payload of a variant without data is empty (size 0,
+  alignment 1). Payloads are not overlapped (`decisions/OPEN.md` #35). Only
+  the tag and the payload of the variant a value holds are written, and a
+  `match` reads a payload only where the tag says that its variant is the one
+  held.
 
 ## 3. Names, declarations and mutability
 
@@ -161,7 +206,8 @@ compiler's diagnostic codes are listed in the compiler repository
   value is not `()` is an error; write `_ := expr` to discard.
 - **[DECL-6]** In a pattern, a bare name binds the value. When the matched type
   is an enum that has a variant with that name, the pattern is an error (it
-  would silently match everything); the variant is written `Enum.Variant`.
+  would silently match everything); the variant is written `Enum.Variant`,
+  and a variant with data `Enum.Variant(p, …)` ([MATCH-4]).
 
 ## 4. Borrows
 
@@ -245,14 +291,35 @@ them.
   all return, or leave their iteration with `break` or `continue`, [LOOP-5])
   can only be used as a statement; binding it, passing it or returning it is
   an error.
-- **[MATCH-1]** A `match` covers every value of the matched type; otherwise it
-  is an error that names one value not covered. Integer matches need a final
-  `_` arm.
+- **[MATCH-1]** A `match` covers every value of the matched type — for a
+  struct or a variant with data, every combination of the values of its
+  fields ([MATCH-4], [MATCH-5]) —; otherwise it is an error that names one
+  value not covered. Integer matches need a final `_` arm (an integer inside
+  a struct or a variant needs `_` in some arm at its position).
 - **[MATCH-2]** An arm that can never match, because earlier arms cover every
   value it matches, is an error.
 - **[MATCH-3]** Without an expected type, the type of a `match` comes from its
   arms: an arm whose value needs a type from context (an integer literal,
   `None`) takes it from the other arms, whatever their order.
+- **[MATCH-4]** *(decision 0017)* `E.V(p1, …, pn)` matches variant `V` of
+  enum `E` when each value it holds matches the pattern in its position; a
+  variant with data is matched with exactly one pattern per value (a value
+  that is not tested is `_`), and a variant without data without
+  parentheses. `Some`, `Ok` and `Err` take exactly one pattern. There are no
+  rest patterns (`Some(..)`, `E.V(..)`).
+- **[MATCH-5]** *(decision 0017)* `S { f1: p1, …, fn: pn }` matches a value
+  of struct `S` when each field matches its pattern. Every field of `S` is
+  written exactly once, in any order, as `field: pattern`; a field that is
+  not tested is `field: _`. There is no `..` and no shorthand
+  (`S { f }`); a missing, unknown or repeated field is an error. A struct of
+  another package with a field that is not `pub` cannot be matched with a
+  struct pattern ([VIS-2]). Struct patterns and patterns of variants nest in
+  each other, and in `Some`, `Ok` and `Err`, at any depth.
+- **[MATCH-6]** *(decision 0017)* Checking [MATCH-1] and [MATCH-2] for one
+  `match` has a fixed budget of work, the same on every target and machine
+  ([TGT-2]); a `match` whose check needs more is an error, with a note to
+  split it, and the compiler never runs away on it. The budget, and the unit
+  it is counted in, are the compiler's, documented with its diagnostics.
 - **[CELL-1]** A **cell** is a function body written as regions. In this version
   a cell is the whole body. Regions appear in this order, each optional:
 
@@ -421,9 +488,10 @@ hold in every build mode; there is no unchecked release mode.
   types and logical for unsigned types. Both operands have the same type.
 - **[NUM-4]** `& | ^` operate on the two's-complement bits and never trap.
 - **[NUM-5]** Comparisons compare mathematical values. `==` and `!=` also apply
-  to `bool` and enums; `Option` and `Result` are inspected with `match`;
-  structs have no comparison operators ([STRUCT-7]). Floats compare as IEEE
-  754 says ([FLT-9]).
+  to `bool` and to enums whose variants hold no data; `Option`, `Result` and
+  enums with data are inspected with `match` ([ENUM-4]); structs have no
+  comparison operators ([STRUCT-7]). Floats compare as IEEE 754 says
+  ([FLT-9]).
 
 ### 6.3 Traps
 
@@ -502,8 +570,8 @@ Both operands have the same integer type, taken from them or from context.
 
 - **[FLT-1]** `f32` and `f64` are IEEE 754 binary32 and binary64, the same on
   every target. They are value types ([TY-1]): locals, parameters, results,
-  struct fields, array elements, `Option` and `Result` payloads, and the C
-  boundary ([ABI-2]). Their layout is their width, aligned as the target's
+  struct fields, array elements, `Option` and `Result` payloads, the values
+  of enum variants ([ENUM-1], decision 0017), and the C boundary ([ABI-2]). Their layout is their width, aligned as the target's
   data layout says (`f64` is 4-aligned on 32-bit x86 Linux, 8-aligned on the
   other targets; [STRUCT-8]).
 - **[FLT-2]** A float literal ([LEX-19]) takes the float type its context
@@ -682,8 +750,9 @@ stream, the effect that a write may happen.
   symbol in different packages must agree (`modules.md` [VIS-8]).
 - **[ABI-2]** Only integers, `bool` and *(decision 0019)* the floats cross
   the boundary (and `()` as a return type); `f32` is C's `float` and `f64`
-  C's `double`, on every target. Slices, enums, structs, `Option` and `Result` do not, because their
-  layout is not a stable ABI ([STRUCT-8]). Integers and `bool` narrower than
+  C's `double`, on every target. Slices, enums (with or without data),
+  structs, `Option` and `Result` do not, because their layout is not a
+  stable ABI ([STRUCT-8], [ENUM-5]). Integers and `bool` narrower than
   32 bits follow the C ABI of each target, which differ: some make the caller
   extend them to 32 bits (Apple's ARM64 ABI), some leave the bits beyond the
   value's width unspecified (the generic AAPCS64). When Yxy passes such a
@@ -775,9 +844,12 @@ stream, the effect that a write may happen.
 
 ## 12. Outside this version
 
-Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
-generics, traits, closures, function values, method calls (other than the
-operations of a `Console`, [CON-2]), loop labels, `break` with a value,
+Rejected with a diagnostic, never ignored: `when`, named fields in enum
+variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
+patterns (`..`) and field shorthand in patterns, destructuring declarations
+(`P { x: a } := p`), user-defined generics, traits, closures, function
+values, method calls (other than the operations of a `Console`, [CON-2]),
+loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating a `mut` array or text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
 dependencies on other modules, manifest requirements,
@@ -793,7 +865,7 @@ types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 `async`), casts (`as`), block comments, generic enums, mutable slices, enums
 without variants and enums with more than 256 variants; for structs: generic
 structs, structs without fields, arrays and slices as fields, recursive
-structs, structs beyond [STRUCT-9], equality, patterns, methods, field
+structs, structs beyond [STRUCT-9], equality, methods, field
 shorthand, update syntax, fields of array elements or temporaries as assignment
 targets, and structs at the C boundary.
 
