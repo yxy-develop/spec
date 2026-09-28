@@ -11,7 +11,8 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[PRG-1]** A program is a package and the packages it imports
   (`modules.md`). A package is the `.yxy` files of one directory of a module,
   or one standalone file; each file starts with `package <name>`.
-- **[PRG-2]** Items are enums, structs and functions. Item names are unique in
+- **[PRG-2]** Items are enums, structs, functions and *(experimental,
+  decision 0018)* constants ([CONST-1]). Item names are unique in
   the package, across its files (`modules.md` [PKG-4]). The prelude names —
   `bool`, the integer type names, `str`, `Console` *(decision 0015)*,
   `Option`, `Result`, `Some`, `None`, `Ok`, `Err`, the operations in §6.4 and
@@ -33,7 +34,7 @@ compiler's diagnostic codes are listed in the compiler repository
 | `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
 | `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
-| `[T; N]` | exactly `N` elements | local variables only, created from a literal (`[a, b]` or `[v; N]`) |
+| `[T; N]` | exactly `N` elements (`N` a constant expression, [CONST-5]) | local variables only, created from a literal (`[a, b]` or `[v; N]`) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
@@ -156,6 +157,59 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[DECL-6]** In a pattern, a bare name binds the value. When the matched type
   is an enum that has a variant with that name, the pattern is an error (it
   would silently match everything); the variant is written `Enum.Variant`.
+
+### 3.1 Constants *(experimental, decision 0018)*
+
+- **[CONST-1]** `const NAME: T := value` declares a **constant**, an item of
+  its package ([PRG-2]); `pub const` makes it visible to other packages,
+  which name it `pkg.NAME` (`modules.md` [VIS-1]). The type is written and
+  is an integer type or `bool`. A constant is declared at package level
+  only: a `const` inside a function is an error. Its name stands for its
+  value wherever it is read; it cannot be assigned, borrowed, indexed or
+  called, is not a type, and is not a pattern (a name in a pattern binds,
+  [DECL-6]); no other item, parameter, local or binding of its package
+  takes its name ([DECL-3]).
+- **[CONST-2]** The value is a **constant expression**: integer literals,
+  `true`, `false`, names of constants (`N`, or `pkg.N` of an import), the
+  operators of `syntax.md` §4 and grouping parentheses. Nothing else is: no
+  call (not even `widen`, `checked_convert` or the operations of §6.4: there
+  is no `const fn`), no variable, field, `.len`, variant, `match`, text or
+  array. It is typed as in a function body ([TY-4]), and its type is the
+  constant's.
+- **[CONST-3]** The compiler computes the value of every constant of the
+  program, used or not, before the program runs, by the rules of §6 on the
+  target's data model ([TY-2]): operands left to right, `&&` and `||`
+  evaluating their right operand only when it is needed ([NUM-1]–[NUM-5]).
+  Computing a constant has no effects and runs no code of any package
+  (`modules.md` [INIT-2]). An operation that would trap ([NUM-1]) makes the
+  program invalid: an error at that operation, which names the kind of
+  failure.
+- **[CONST-4]** *(limits)* A constant that reads itself, directly or through
+  other constants, has no value: an error. The **steps** of a constant are
+  the literals, operators and names of its value, where a name of a
+  constant also counts the steps of that constant — the size of the value
+  with every constant written out in place of its name. A constant of more
+  than 1 000 000 steps is an error. Both are decided from the names, before
+  anything is computed, the same on every target, so checking a program
+  always ends.
+- **[CONST-5]** The length of an array type `[T; N]` and the count of
+  `[value; N]` are constant expressions of type `usize` ([REF-3]), computed
+  as in [CONST-3]; a literal is the simplest.
+- **[CONST-6]** *([TGT-2] for constants)* The value of a constant may depend
+  on the target only through the range and width of `usize` and `isize`,
+  and so may its validity, as a literal's does: `const WORDS: usize :=
+  65536 * 65536` is 2^32 on a 64-bit target and an error on a 32-bit one;
+  `3 << 31` in `usize` drops a bit on 32 bits only ([NUM-3]). A constant of
+  another type has the same value on every target.
+- **[CONST-7]** *(certain traps)* An operation of a function body whose
+  operands are constant expressions, and whose computation traps, does not
+  make the program invalid: the program traps when it evaluates the
+  operation ([NUM-1], [TRAP-1]). The compiler reports a **warning** there,
+  one for each largest constant expression, at the operation whose trap the
+  program would report. An operation that reads a variable is not computed
+  at compile time and gets no warning, even when it always traps (`x / 0`).
+  A warning never makes a program invalid and never changes what it does;
+  it may depend on the target ([TGT-2]).
 
 ## 4. Borrows
 
@@ -652,7 +706,10 @@ stream, the effect that a write may happen.
 - **[TGT-2]** A program's validity depends on the target only through the
   range of `usize`/`isize` values (for example, the literal `4294967296` does
   not fit `usize` on a 32-bit target) — never through conversion rules
-  ([CONV-1]).
+  ([CONV-1]). *(decision 0018)* The same holds for the values of constants
+  and the lengths of arrays computed at compile time ([CONST-6]): one that
+  overflows `usize` on a 32-bit target only is an error there only. A
+  warning ([CONST-7]) may depend on the target and never decides validity.
 - **[TGT-3]** `usize` crosses the C boundary as `size_t` of the target.
 
 ## 10. Entry point
@@ -693,7 +750,9 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([REF-3], [REF-4]),
 owned strings, characters, the text operations of [TEXT-7], floating point,
 128-bit integers, concurrency (`par`,
-`async`), casts (`as`), block comments, generic enums, mutable slices, enums
+`async`), casts (`as`), block comments, *(decision 0018)* constants inside
+a function, constants of types other than the integers and `bool`, calls in
+constant expressions (`const fn`), constants as patterns, generic enums, mutable slices, enums
 without variants and enums with more than 256 variants; for structs: generic
 structs, structs without fields, arrays and slices as fields, recursive
 structs, structs beyond [STRUCT-9], equality, patterns, methods, field

@@ -237,8 +237,8 @@ effects {}
 
 - **[VIS-1]** An item is private to its package unless its declaration starts
   with `pub`. `pub` applies to `fn` (including `extern fn` and `export fn`)
-  and `enum`, and to `struct` when structs exist. Other packages can name
-  only `pub` items.
+  and `enum`, and to `struct` when structs exist, *(decision 0018)* and to
+  `const`. Other packages can name only `pub` items.
 - **[VIS-2]** `pub enum` makes the type and all its variants visible;
   variants have no visibility of their own. Proposal for structs (OPEN #28):
   the fields of a `pub struct` are private unless each is marked `pub`, so
@@ -342,7 +342,9 @@ effects {}
   `export fn` called by foreign code.
 - **[INIT-2]** Compile-time constants, if they are added, are evaluated by
   the compiler under explicit limits (as [GR-5] limits parsing), have no
-  effects, and do not run package code during resolution.
+  effects, and do not run package code during resolution. *(decision 0018)*
+  Constants exist: literals, operators and other constants, without calls,
+  with the limits of `semantics.md` [CONST-4].
 - **[INIT-3]** There are no build scripts, install hooks, code generators or
   compiler plug-ins run on behalf of a package. Obtaining, verifying,
   selecting and building a module never executes code supplied by that

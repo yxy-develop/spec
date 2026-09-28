@@ -34,10 +34,11 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   not an identifier: it is the wildcard/discard token.
 - **[LEX-5]** Keywords: `package import pub as enum struct fn extern export
   effects mut require else return if while loop for in break continue match
-  true false`. *(`loop`, `for`, `in`, `break` and `continue` since decision
-  0016; they were reserved words before.)*
+  true false const`. *(`loop`, `for`, `in`, `break` and `continue` since
+  decision 0016, and `const` since decision 0018; they were reserved words
+  before.)*
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `async await
-  const defer dyn impl module par self static trait type unsafe use when where
+  defer dyn impl module par self static trait type unsafe use when where
   yield`. `module` is rejected with a mechanical fix
   to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
   reserved (`modules.md` [IMP-6]). The compiler's conformance suite copies the
@@ -170,7 +171,7 @@ file        = package_clause { import_decl } { item } ;   (* modules.md §9 *)
 package_clause
             = "package" IDENT NL ;
 import_decl = "import" PATH [ "as" IDENT ] NL ;
-item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl ) ;
+item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl | const_decl ) ;
 
 qual_name   = IDENT [ "." IDENT ] ;             (* item, or import.item *)
 
@@ -182,6 +183,7 @@ field       = [ "pub" ] IDENT ":" type ;          (* modules.md [VIS-2], OPEN #2
 
 fn_decl     = [ "export" | "extern" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
               effects [ body ] NL ;
+const_decl  = "const" IDENT ":" type ":=" expr NL ;   (* decision 0018; semantics.md [CONST-1], [CONST-2] *)
 params      = param { "," param } [ "," ] ;
 param       = IDENT ":" type ;
 effects     = "effects" "{" [ IDENT { "," IDENT } [ "," ] ] "}" ;
@@ -212,7 +214,7 @@ for_source  = head ( ".." | "..=" ) head                      (* [GR-8] *)
 head        = expr ;              (* no unparenthesized struct literal: [GR-6] *)
 
 type        = qual_name [ "<" type { "," type } ">" ]
-            | "[" type ";" INT "]"
+            | "[" type ";" expr "]"                 (* the length: a constant expression, [CONST-5] *)
             | "&" "[" type "]"
             | "(" ")" ;
 
@@ -225,7 +227,7 @@ postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a n
 primary     = INT | STRING | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
-            | "[" expr ";" INT "]"
+            | "[" expr ";" expr "]"                 (* the count: a constant expression, [CONST-5] *)
             | struct_lit
             | match ;
 struct_lit  = qual_name "{" [ field_init { ( "," | NL ) field_init } [ "," ] ] "}" ;
