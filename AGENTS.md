@@ -1,7 +1,6 @@
 # Yxy specification — agent and contributor instructions
 
-This file is the single source of instructions for this repository; `CLAUDE.md`
-only imports it. If the parent directory has its own `AGENTS.md` (a maintainer
+This file is the single source of instructions for this repository. If the parent directory has its own `AGENTS.md` (a maintainer
 workspace), read it too.
 
 - This repository says how the language **should** behave. Implementation
