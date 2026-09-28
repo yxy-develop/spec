@@ -73,9 +73,13 @@ measured before the catalogue of TASK-048.
    reassigned with other text), function results and `match` values. Not in
    arrays, `Option`, `Result` or struct fields, and not at the C boundary.
    A function may return `&str` because every `&str` of this version views
-   constant data. When text that views other data exists (the owned string,
-   validated bytes), returning it follows the ownership rules (OPEN #6); no
-   program valid today has such text, so none is invalidated.
+   constant data. This differs from slices, which are never returned
+   ([REF-2]), and it constrains ownership (OPEN #6): `fn f(s: &str) -> &str
+   { return s }` is valid today, so the rule for text that views other data
+   (the owned string, validated bytes) must either allow returning a borrow
+   derived from a parameter, or keep `&str` for constant text only and give
+   views of other data a type of their own. A rule that forbids returning
+   any `&str` would invalidate valid programs (OPEN #48).
 7. **Everything else is refused, each with a diagnostic of its own**
    ([TEXT-7]): concatenation, indexing, ordering, the owned string, `str`
    without `&`, `&mut str`, `char` and character literals, formatting
@@ -86,7 +90,8 @@ measured before the catalogue of TASK-048.
 
 8. **`Console` is a capability** ([CON-1]): a value that carries the
    authority to write to the process's standard output. Its type name is in
-   the prelude ([PRG-2]). No expression creates one: the runtime gives it to
+   the prelude ([PRG-2]), and so is `str` (see "Names now reserved" below).
+   No expression creates one: the runtime gives it to
    `main`, which may declare one parameter of type `Console` ([MAIN-1]),
    and a function that prints receives it as a parameter. There is no global
    console: there are no global variables ([INIT-1]), and `static` stays
@@ -120,10 +125,34 @@ measured before the catalogue of TASK-048.
     operations are not presented as recoverable, so no abort is hidden in a
     recoverable API. On a pipe whose reader has gone, the operating system's
     default for SIGPIPE applies (it ends the process): Yxy does not change
-    signal dispositions.
+    signal dispositions. *Known limit:* the runtime does not read `errno`,
+    so a write interrupted by a signal (`EINTR`) before any byte is written
+    is a failure (`T0005`), not retried; programs of this version install
+    no signal handler, but foreign code may install one without
+    `SA_RESTART`. Reading `errno` (a function of each C library:
+    `__error` on Darwin, `__errno_location` on glibc) and retrying belong to
+    the catalogue of TASK-048, with the failures other resources report.
 12. **Runtime.** The hosted runtime writes with `write` alone, already a
     reserved symbol ([ABI-3] (a)); no C library function and no stdio
     buffer is used. A freestanding program has no console ([STD-2]).
+
+### Names now reserved
+
+`str` and `Console` join the prelude names ([PRG-2]), which nothing may
+redefine. A program that used one of them as the name of an item, a
+parameter, a local variable or an import (a `struct Console`, a local
+`str`, a package named `str`) was valid before this decision and is refused
+now (the compiler's E0205, with a note that names this decision; E0813 for
+an import). No mechanical fix is offered: a rename changes every use, which
+may be in other files of the package or in other packages. This is the cost
+the alternative "a `print` function in the prelude" (below) avoids for
+`print`; it is accepted for these two names because the type of the
+capability must be one that no program can redefine, or `fn main(console:
+Console)` would depend on the program, and because `str` names the type of
+`&str` as the integer names name theirs. It is recorded in OPEN #48 as a
+change that invalidates valid programs. `String`, `string` and `char` stay
+ordinary names: a type of the program with one of them is that type, and
+the refusal of [TEXT-7] applies only when the program declares none.
 
 ### Measure of the redundancy (for TASK-048)
 
@@ -171,7 +200,9 @@ TASK-048 decides with this measure.
   deferred.
 - **A `print` function in the prelude**, called `print(console, "x")`.
   It reserves prelude names (`print` would break programs that define it)
-  and makes the capability an ordinary argument. Chosen instead: the call
+  and makes the capability an ordinary argument. (The two names this
+  decision does reserve, `str` and `Console`, have the same cost: "Names now
+  reserved" above.) Chosen instead: the call
   form `console.print(x)`, only on a value of type `Console`. The grammar
   already reads it (the form of `pkg.f(x)`, [IMP-6]), and the checker tells a
   capability (a local) from an import, whose names never collide ([IMP-5]);
@@ -201,6 +232,19 @@ TASK-048 decides with this measure.
   and a flush at exit would be needed; a buffered writer can be a library
   later.
 - **Standard error and input.** Not in this version.
+
+## Fix round (2026-09-28)
+
+A review of the implementation found three defects, corrected without a
+change to the rules above: the repeat form of an array (`[v; N]`) did not
+apply the element rules of `[a, b]`, so `[console; 2]`, `["hi"; 3]` and a
+slice `[s; 2]` were accepted ([CON-1], [TEXT-6], [REF-2]); types of the
+program named `String`, `string` or `char` were refused as text types,
+although these are not prelude names; and the compiler's trap event gained a
+value in an enumeration that had not been declared open (recorded as an
+amendment of the compiler's implementation decision 0010). This section and
+"Names now reserved" also record the constraint on OPEN #6 (item 6) and the
+limit on `EINTR` (item 11).
 
 ## What could change it
 

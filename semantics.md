@@ -212,8 +212,10 @@ them.
   assigned other text), the result of a function and the value of a `match`.
   It cannot be stored in arrays, `Option`, `Result` or struct fields, and does
   not cross the C boundary ([ABI-2]). A function may return text because
-  every `&str` of this version views constant data; when text that views
-  other data exists, returning it follows the ownership rules (OPEN #6).
+  every `&str` of this version views constant data, also text it received
+  as a parameter (unlike a slice, [REF-2]); when text that views other data
+  exists, returning it follows the ownership rules, which must keep such
+  programs valid (OPEN #6, decision 0015).
 - **[TEXT-7]** Not in this version, each rejected with its own diagnostic:
   concatenation (`+`), indexing (`t[i]`), ordering (`<`), the owned string
   (`String`), `str` without `&`, `&mut str`, `char` and character literals,
