@@ -6,8 +6,9 @@
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-11], [LEX-19], §3 (`primary`, patterns);
   `semantics.md` §2 (table), [PRG-2], [TY-1], [TY-4], [NUM-5], §6.6
-  ([FLT-1]–[FLT-10]), [CONV-1], [EFF-5], the table of §7, [ABI-2], [ABI-3]
-  (b), §12; `OPEN.md` #8 (rewritten) and #48 (names now reserved)
+  ([FLT-1]–[FLT-10]), [CONV-1], [CONV-3], [EFF-5], the table of §7,
+  [ABI-2], [ABI-3] (b), §12, the glossary (`truncate`); `OPEN.md` #8
+  (rewritten) and #48 (names now reserved)
 - Author requirements and sources it follows (register of the control
   repository and the audit): M-2 (nothing silent), M-4 (no abort hidden in an
   API presented as recoverable), the master prompt's rule that release
@@ -62,9 +63,10 @@ quietness of NaN specified, and fast-math never by default.
 2. **Literals** ([LEX-19], [FLT-2], [TY-4]). A float literal is written
    `digits.digits`, with an optional exponent `e<digits>` or `e-<digits>`
    (`1.5`, `0.25`, `6.02e23`, `1.0e-9`); `_` separates digits as in integers.
-   It has one spelling per value and digit grouping: `1.`, `.5`, `1e5`,
-   `1.5E3`, `1.5e+3` and exponents with leading zeros are errors, each with a
-   mechanical fix to the one spelling; there are no type suffixes (`1.5f32`)
+   It has one spelling of each form: `1.`, `.5`, `1e5`, `1.5E3`, `1.5e+3`
+   and exponents with leading zeros are errors, each with a mechanical fix
+   to the one spelling of its form (a value can still be written in several
+   forms, `1.5`, `1.50`, `15.0e-1`); there are no type suffixes (`1.5f32`)
    and no hexadecimal floats. A float literal has no type of its own: it
    takes the float type its context expects, like an integer literal, and
    with no context it is an error — there is no default float type. It is
@@ -111,14 +113,20 @@ quietness of NaN specified, and fast-math never by default.
    every comparison is false except `!=`, which is true (`x != x` holds
    exactly when `x` is NaN). Equality is IEEE's, not a comparison of bits.
    There is no total order in this version.
-7. **NaN** ([FLT-9]). A NaN that an operation produces is quiet; no
-   operation of the language produces a signaling NaN. The sign and the
+7. **NaN** ([FLT-9]). An operation whose operands are not NaN never
+   produces a signaling NaN; the NaN it produces is quiet. The sign and the
    payload of a NaN result are **not specified**: they differ between
    targets and between the constant folder and the hardware (Context), and
    no operation of this version can observe them (there is no access to the
    bits and no printing of floats). A signaling NaN can only come from
-   foreign code; operations make it quiet, and on i686 the C ABI's x87
-   return may make it quiet too. A NaN converts to no integer ([FLT-8]).
+   foreign code; with a signaling operand an operation gives a NaN, quiet or
+   not (not specified, like the sign and the payload), `-x` keeps the
+   quietness of `x`, and on i686 the C ABI's x87 return may make it quiet.
+   A NaN converts to no integer ([FLT-8]). *(Amended after the review of
+   2026-09-28: the text said that an operation makes a signaling NaN quiet,
+   but `-x` is IEEE 754's negate, which keeps it signaling, and LLVM folds
+   `x * 1.0` into `x` at `-O2`, so the product of a signaling NaN is quiet at
+   `-O0` and signaling at `-O2`; only foreign code can see either.)*
 8. **Signed zero** ([FLT-4], [FLT-9]). `+0.0` and `-0.0` are distinct values
    that compare equal; every operation gives the sign IEEE 754 specifies
    (`x - x` is `+0.0`, `-0.0 + -0.0` is `-0.0`, `1.0 / -0.0` is `-inf`).
@@ -134,7 +142,8 @@ quietness of NaN specified, and fast-math never by default.
      the type (infinities included) the program **traps** with the new kind
      "float-to-integer conversion out of range" (the compiler's `T0006`).
    - `checked_truncate_to_int(x)`: the same, returning `Option`: `None`
-     instead of the trap. It checks nothing at run time.
+     instead of the trap. It is checked at run time, as `checked_convert`
+     is ([CONV-2]), but it never traps, so it has no trap site.
    There is no implicit conversion between floats and integers or between
    `f32` and `f64`; `widen` and `checked_convert` stay integer conversions;
    `as` stays reserved ([CONV-3]).
@@ -150,18 +159,29 @@ quietness of NaN specified, and fast-math never by default.
     registers at its own precision, as on the 64-bit targets, never in x87
     registers with extended precision; x86 CPUs without SSE2 are not
     supported. The x87 unit remains only where SSE2 has no instruction or
-    the C ABI requires it: a `float`/`double` result returned by a function
-    with the C calling convention (a load and a store that keep every value,
-    a signaling NaN aside), and conversions between 64-bit integers and
-    floats, which it computes exactly (64-bit significand) before rounding
-    once, under the C runtime's default precision control, which Yxy never
-    changes. x86-64 and AArch64 need no floor: their baselines have scalar
-    IEEE arithmetic of both widths.
+    the C ABI requires it, and does no arithmetic there: a `float`/`double`
+    result returned by a function with the C calling convention (loaded into
+    `st(0)` and stored: the store rounds whatever the callee left there — a
+    Yxy function leaves a value of the declared type, a foreign one computed
+    with x87 arithmetic may leave a wider one, which the store rounds again
+    — and loading makes a signaling NaN quiet), and conversions between
+    64-bit integers and floats, which it loads or stores exactly (64-bit
+    significand) with one rounding at the store. No result depends on the
+    x87 precision control, which Yxy never changes: the conversion of a
+    `u64` to `f32`, which LLVM lowers with an x87 addition, is written
+    without it (halved to odd, converted as signed, doubled). x86-64 and
+    AArch64 need no floor: their baselines have scalar IEEE arithmetic of
+    both widths.
 13. **The floating-point environment** ([EFF-5], [FLT-3]). Yxy code runs with
-    round-to-nearest, no trapped exception, and subnormals kept; the runtime
-    never changes this. Foreign code must leave the environment as it found
-    it before it returns to Yxy code or calls into it — a precondition of the
-    `ffi` boundary, like not unwinding across Yxy frames. A `--link` input
+    round-to-nearest, no trapped exception, and subnormals kept, and on i686
+    with the x87 precision control at its default (a 64-bit significand);
+    the runtime never changes this. Foreign code must leave the environment
+    as it found it before it returns to Yxy code or calls into it — a
+    precondition of the `ffi` boundary, like not unwinding across Yxy
+    frames. *(The precision control was added after the review of
+    2026-09-28, which measured that LLVM's lowering of a `u64` to `f32` on
+    i686 rounded twice under a precision of 53 bits; the conversion no
+    longer depends on it, but the environment names it.)* A `--link` input
     must not define `fma` or `fmaf`, which the generated code calls on the
     x86 targets.
 14. **The C boundary** ([ABI-2]). `f32` crosses as C's `float` and `f64` as
@@ -191,7 +211,41 @@ every target the suite runs, compared bit for bit — NaN by class — with
 values derived independently of the compiler (exact rational arithmetic and
 the rounding written from IEEE 754); the generated code is checked to carry
 no fast-math flag, to keep `a * b + c` as two instructions at `-O2` where the
-CPU has `fmadd`, and to use SSE2 on i686.
+CPU has `fmadd`, and to use SSE2 on i686 with no x87 arithmetic. The
+review of 2026-09-28 (`reviews/2026-09-28-phase5-floats.md` in the control
+repository) derived the corpus's values again with an oracle of its own,
+found no difference, and ran the corpus and differential probes in a Linux
+VM on x86-64, i686 and AArch64 at `-O0` and `-O2` with no difference from
+that oracle.
+
+## Questions for the author (reviewed at the gate of 0.1)
+
+The review of 2026-09-28 raised five questions for the author before this
+decision leaves Experimental. Each keeps, for now, the choice above; the
+author reviews them at the gate of 0.1.
+
+- **Q1. Printing floats** stays deferred (item 15, `OPEN.md` #8) until the
+  work on text formatting (#7). The alternative is to bring forward only
+  the printing (the shortest text that reads back as the same value, `-0`,
+  `inf`, a canonical NaN) with a `to_bits` that canonicalizes NaN.
+- **Q2. No default float type**, and an integer literal is never a float
+  (item 2). Accepting an exact integer literal where a float is expected
+  could come later without breaking programs.
+- **Q3. `fma` on the x86 targets** stays a call of the C library (item 5):
+  one call per operation, no vectorization, a dependence on a correct libm
+  (glibc 2.41 and libSystem measured correct) and none in a freestanding
+  profile. The alternatives: an optional CPU level per target (x86-64-v3),
+  which changes the instruction and not the bits, or a software `fma` in
+  the runtime; B2 is to be measured on an x86 host before the decision
+  closes.
+- **Q4. `%` and float literal patterns** stay refused (items 10 and 11);
+  both can be accepted later without breaking programs.
+- **Q5. The name `truncate_to_int`** stays, with its meaning fixed in the
+  glossary of `semantics.md`: to truncate is to round toward zero, never
+  to drop the high bits of an integer, which no operation of the language
+  does ([CONV-3]). The alternative, another name (`to_int_toward_zero`,
+  `trunc_to_int`), would have to be chosen before the language opens,
+  since renaming a prelude name then needs the rule of `OPEN.md` #48.
 
 ## Alternatives
 
