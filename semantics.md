@@ -51,7 +51,9 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
-  context, it is an error. A literal that does not fit its type is an error;
+  context, it is an error. *(decision 0016)* The bounds of a range in `for`
+  have `usize` as their context when neither bound nor the loop variable
+  gives them a type ([LOOP-3]). A literal that does not fit its type is an error;
   a `-` directly applied to a literal is part of the literal, so
   `x: i8 := -128` is valid.
 - **[TY-5]** `None`, `Ok(…)` and `Err(…)` need an expected type. `Some(v)` can
@@ -140,7 +142,9 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[DECL-2]** `place = value` assigns. The place is a `mut` local variable, an
   element `a[i]` of a `mut` array, or a field `v.f` (at any depth) of a `mut`
   struct variable ([STRUCT-5]). Slices are read-only and cannot be reassigned.
-- **[DECL-3]** Blocks (`{ … }` of `if`, `while` and match arms) open scopes.
+- **[DECL-3]** Blocks (`{ … }` of `if`, `while`, `loop`, `for` and match
+  arms) open scopes; the variable of a `for` is in the scope of its body
+  ([LOOP-1]).
   **Shadowing is not allowed**: a name cannot be declared while another
   declaration with the same name is visible in the function, and a local or a
   parameter cannot take the name of an item or of an import of its file
@@ -158,7 +162,7 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[REF-1]** `&a`, where `a` is an **immutable** array local, produces a slice
   `&[T]` over its elements. Borrowing a `mut` array, a scalar or a slice is an
   error. Because the borrowed array is immutable, a slice never observes a
-  mutation.
+  mutation. `for x in a` iterates `&a` and requires the same ([LOOP-4]).
 - **[REF-2]** References cannot escape: no function returns a slice, and slices
   cannot be stored in arrays, `Option` or `Result`. A slice parameter or local
   therefore never outlives the array it views. This is a restriction of the
@@ -227,12 +231,14 @@ them.
 
 - **[FN-1]** A function declares parameter types, its return type (or `()` when
   omitted) and its effects: `effects { … }` is mandatory (§7).
-- **[FN-2]** A function whose return type is not `()` must return on every path.
-  Statements that can never run (after a `return`, or regions after one that
+- **[FN-2]** A function whose return type is not `()` must return on every path:
+  its body must not go on at its end ([LOOP-5]). Statements that can never run
+  (after a `return`, a `break` or a `continue`, or regions after one that
   always returns) are errors.
 - **[FN-3]** An expression that never produces a value (a `match` whose arms
-  all return) can only be used as a statement; binding it, passing it or
-  returning it is an error.
+  all return, or leave their iteration with `break` or `continue`, [LOOP-5])
+  can only be used as a statement; binding it, passing it or returning it is
+  an error.
 - **[MATCH-1]** A `match` covers every value of the matched type; otherwise it
   is an error that names one value not covered. Integer matches need a final
   `_` arm.
@@ -255,10 +261,12 @@ them.
   takes `<-`; `@effect` and `@out` take `->`.
 - **[CELL-2]** *(experimental; the place of `require` is the author's
   decision A1 of 2026-09-26)* Statements allowed in each region, at any depth
-  (a statement inside an `if` or a `while` follows the rules of its region):
+  (a statement inside an `if` or a loop follows the rules of its region):
   `@ctrl` — declarations and `require`; `@eval` — declarations, assignments,
-  `if`, `while`, calls and `require`; `@effect` — declarations, assignments,
-  `if`, `while` and calls; `@out` — declarations, `if`, calls and `return`.
+  `if`, loops, calls and `require`; `@effect` — declarations, assignments,
+  `if`, loops and calls; `@out` — declarations, `if`, calls and `return`.
+  *(decision 0016)* Loops are `while`, `loop` and `for`, with `break` and
+  `continue` inside them ([LOOP-6]).
   A `require` in `@ctrl` validates before the computation (pre-validation); a
   `require` in `@eval` validates what the statements of `@eval` before it
   computed (post-validation). It may appear anywhere in `@eval`: statements
@@ -267,7 +275,8 @@ them.
   output, a false `require` in `@eval` prevents them ([CELL-6]).
   Consequently validation (`require`) happens only in `@ctrl` and `@eval`,
   before every effect step, and an early exit before `@out` happens only
-  through a false `require` or `?`. The rules hold within a cell, for that
+  through a false `require` or `?` (`break` and `continue` leave a loop,
+  never a region). The rules hold within a cell, for that
   function: a function whose body is not a cell, or a function called from
   `@eval`, is not restricted by them. See `decisions/0004-cell-regions.md` for
   the alternatives and what would change them.
@@ -295,6 +304,63 @@ them.
   its condition is false) is reserved and not supported yet.
 - **[CELL-8]** No value in this version owns a resource, so leaving a function
   runs no cleanup code. Deterministic cleanup order is future work.
+
+### 5.1 Loops *(experimental, decision 0016)*
+
+- **[LOOP-1]** `while cond { … }`, `loop { … }` and `for x in source { … }`
+  are statements. `while` runs its body while `cond` is `true`, evaluating
+  `cond` before each iteration; `loop` runs its body until a `break` leaves
+  it; `for` runs its body once for each value of its source ([LOOP-3],
+  [LOOP-4]), in order. The variable of a `for` is declared in the scope of
+  the body, so it is not visible after the loop ([DECL-3]); it is immutable,
+  and each iteration binds it to the next value. `for x: T in …` writes its
+  type; `for _ in …` has no variable.
+- **[LOOP-2]** `break` leaves the innermost loop whose body contains it, and
+  `continue` ends the current iteration of that loop: `while` evaluates its
+  condition again, `for` goes to its next value, `loop` runs its body again.
+  A `break` or `continue` in a `match` arm leaves the loop around the
+  `match`. The condition of `while` and the source of `for` are not in the
+  loop's body. `break` and `continue` outside the body of every loop are
+  errors. There are no labels and no `break` with a value in this version
+  (OPEN #49).
+- **[LOOP-3]** A range `a..b` is the integers from `a` up to `b`, `b`
+  excluded, and is empty when `a ≥ b`; `a..=b` includes `b` and is empty when
+  `a > b`. Both bounds have the same integer type, which each takes from the
+  other ([TY-4]) or from the type of the variable (`for i: u8 in 0..n`);
+  when neither gives one, the type is `usize`. `a` and then `b` are evaluated
+  once, before the first iteration; assigning a variable that a bound read
+  does not change the iterations. Iterating never overflows and never traps:
+  after its last value the loop ends without computing another, so
+  `for i: u8 in 250..=255` runs six times.
+- **[LOOP-4]** `for x in s` iterates the elements of a slice `s` (a slice
+  parameter or local, `&a`, `t.bytes`: any expression of type `&[T]`) or of
+  an array local named `s`, which is the same as `&s` and requires the same
+  ([REF-1]): an array that is not `mut`. The source is evaluated once; each
+  iteration binds `x` to a copy of the next element, from the first to the
+  last. A slice views an immutable array, so nothing changes its elements or
+  its length while the loop runs, and iterating needs no check at run time.
+  A `mut` array is iterated by index (`for i in 0..a.len { … a[i] … }`).
+  Text is not iterated ([TEXT-7]); its bytes are, `for b in t.bytes`. Other
+  values (integers, `Option`, structs, an array that is not named) are not
+  iterated.
+- **[LOOP-5]** A statement **goes on** when execution can continue after it.
+  `return`, `break` and `continue` never go on; an expression goes on when it
+  produces a value; an `if` goes on when one of its branches does (a missing
+  `else` does); a block goes on when all its statements do. A `while` whose
+  condition is the literal `true`, and a `loop`, go on only when a `break`
+  in their body leaves them; any other `while`, and every `for`, may go on.
+  This rule decides [FN-2] (a function whose return type is not `()` must not
+  go on at its end), unreachable statements (after a statement that does not
+  go on) and [FN-3]: a block that does not go on has no value, and a `match`
+  arm block that goes on has type `()`. So `while true { if c { break } }`
+  goes on, and a function that returns a value needs a `return` after it.
+- **[LOOP-6]** Loops are statements of `<- @eval` and `-> @effect`, at any
+  depth ([CELL-2]); `break` and `continue` follow the region of their loop.
+  They leave a loop, never a region or the cell.
+- **[LOOP-7]** A loop has no effect of its own: the effects of its body are
+  those of its statements ([EFF-3]), and running for ever is not an effect
+  ([EFF-1]). A range or a slice is iterated without checks, so iterating has
+  no trap and no site ([TRAP-3]); the operations of the body keep theirs.
 
 ## 6. Evaluation
 
@@ -469,6 +535,7 @@ Both operands have the same integer type, taken from them or from context.
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5 | no tracked effect; may trap (§6.2) |
+| loops (`while`, `loop`, `for`) | no tracked effect; iterating never traps ([LOOP-7]) |
 | trap | not an effect; it writes its message to standard error and ends the process |
 | typed failure (`Result`, `require`, `?`) | not an effect; it is in the return type |
 | mutation of a local `mut` variable | not an effect |
@@ -613,8 +680,9 @@ stream, the effect that a write may happen.
 
 Rejected with a diagnostic, never ignored: `when`, enum payloads, user-defined
 generics, traits, closures, function values, method calls (other than the
-operations of a `Console`, [CON-2]), `for`, `loop`,
-`break`, `continue`, compound assignment (`+=` and the other `op=` forms),
+operations of a `Console`, [CON-2]), loop labels, `break` with a value,
+ranges as values, ranges without a bound, iterating a `mut` array or text by
+element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
 dependencies on other modules, manifest requirements,
 the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
 arrays as parameters or return values, nested cells, `if` as an expression

@@ -33,10 +33,12 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   version; a letter outside ASCII in an identifier is an error. A lone `_` is
   not an identifier: it is the wildcard/discard token.
 - **[LEX-5]** Keywords: `package import pub as enum struct fn extern export
-  effects mut require else return if while match true false`.
+  effects mut require else return if while loop for in break continue match
+  true false`. *(`loop`, `for`, `in`, `break` and `continue` since decision
+  0016; they were reserved words before.)*
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `async await
-  break const continue defer dyn for impl in loop module par self static trait
-  type unsafe use when where yield`. `module` is rejected with a mechanical fix
+  const defer dyn impl module par self static trait type unsafe use when where
+  yield`. `module` is rejected with a mechanical fix
   to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
   reserved (`modules.md` [IMP-6]). The compiler's conformance suite copies the
   lists of [LEX-5] and [LEX-6] word for word and compares them with the
@@ -113,6 +115,7 @@ escape    = '\' ( "n" | "t" | "r" | "0" | '\' | '"' ) | '\u{' hexdigit [ hexdigi
 | Typed hole | `$` or `$name` |
 | Delimiters | `(` `)` `[` `]` `{` `}` |
 | Separators | `,` `:` `.` `=>` |
+| Range | `..` `..=` (only in the head of `for`, [GR-8]) |
 | Declaration, assignment | `:=` `=` |
 | Operators | `+ - * / % << >> & \| ^ == != < <= > >= && \|\| !` |
 | Postfix | `?` |
@@ -156,9 +159,9 @@ escape    = '\' ( "n" | "t" | "r" | "0" | '\' | '"' ) | '\u{' hexdigit [ hexdigi
 - **[NL-7]** A region header may be followed by a statement on the same line
   (compact form) or by statements on the following lines (multi-line form).
   A new region always starts on its own line.
-- **[NL-8]** The `{` of `if`, `while` and `match` is on the same line as the
-  end of the condition or subject. (A struct literal in that position is
-  parenthesized: [GR-6].)
+- **[NL-8]** The `{` of `if`, `while`, `for`, `loop` and `match` is on the
+  same line as the end of the condition, head or subject (for `loop`, as the
+  keyword). (A struct literal in that position is parenthesized: [GR-6].)
 
 ## 3. Grammar
 
@@ -192,7 +195,8 @@ region_head = "@ctrl" ":"
             | "->" "@out" ":" ;
 
 block       = "{" { stmt } "}" ;
-stmt        = ( decl | assign | require | return | if | while | expr ) ( NL | (* before "}" *) ) ;
+stmt        = ( decl | assign | require | return | if | while | loop | for
+              | "break" | "continue" | expr ) ( NL | (* before "}" *) ) ;
 decl        = [ "mut" ] IDENT [ ":" type ] ":=" expr
             | "_" ":=" expr ;
 assign      = place "=" expr ;
@@ -201,6 +205,10 @@ require     = "require" expr "else" expr ;
 return      = "return" [ expr ] ;
 if          = "if" head block [ "else" ( block | if ) ] ;
 while       = "while" head block ;
+loop        = "loop" block ;                                  (* decision 0016 *)
+for         = "for" ( IDENT | "_" ) [ ":" type ] "in" for_source block ;
+for_source  = head ( ".." | "..=" ) head                      (* [GR-8] *)
+            | head ;
 head        = expr ;              (* no unparenthesized struct literal: [GR-6] *)
 
 type        = qual_name [ "<" type { "," type } ">" ]
@@ -266,8 +274,9 @@ variant is written with one `.` (`Color.Red`).
   exhausting the compiler's resources.
 - **[GR-6]** *(experimental)* `IDENT "{"` (or `IDENT "." IDENT "{"`, a struct
   of an imported package) starts a struct literal, except in a
-  `head`: the condition of `if` (also after `else`) and `while`, and the
-  subject of `match`, outside any `( )`, `[ ]` or `{ }` nested in it. There the
+  `head`: the condition of `if` (also after `else`) and `while`, the subject
+  of `match` and the source of `for` (each bound of a range), outside any
+  `( )`, `[ ]` or `{ }` nested in it. There the
   `{` belongs to the statement (its block, or the arms of `match`), so a struct
   literal is written in parentheses:
 
@@ -293,6 +302,15 @@ variant is written with one `.` (`Color.Red`).
   (`semantics.md` §2.1).
   Struct literals have no field shorthand (`Point { x, y }`) and no update
   syntax (`Point { x: 1, ..p }`).
+- **[GR-8]** *(experimental, decision 0016)* `..` and `..=` separate the two
+  bounds of a range in the head of `for`, and appear nowhere else: a range
+  is not a value (`r := 0..3` is an error), a pattern (OPEN #46) or an index
+  (OPEN #47). Each bound is a whole expression, so `..` binds more loosely
+  than every operator: `for i in 0..n + 1` ends at `n + 1`. The two dots
+  touch, and so does the `=` of `..=`. A range has both bounds: `a..` and
+  `..b` are errors. `break` and `continue` are statements with nothing after
+  them (no value, no label); in a `match` arm they are written in a block,
+  `None => { break }`.
 
 ## 4. Operators
 
@@ -311,7 +329,8 @@ variant is written with one `.` (`Color.Red`).
 | 1 | `\|\|` | left |
 
 Bitwise operators bind tighter than comparisons, so `a & mask == 0` means
-`(a & mask) == 0`.
+`(a & mask) == 0`. `..` and `..=` are not operators: they separate the bounds
+of a range in the head of `for`, below every operator ([GR-8]).
 
 ## 5. The two presentations of a cell
 
