@@ -1,6 +1,6 @@
 # Decision 0006: Newlines, terminators and tokens
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0006
 - Date: 2026-09-25
 - Spec: `syntax.md` §1, §2
 

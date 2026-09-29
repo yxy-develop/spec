@@ -1,6 +1,6 @@
 # Decision 0003: Integer semantics and traps
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0003
 - Date: 2026-09-25
 - Spec: `semantics.md` §6
 

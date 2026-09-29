@@ -1,14 +1,15 @@
 # Decision 0011: Packages, modules and imports by origin
 
-- Status: items 1–2 **Accepted — author's direction** (2026-09-25, given in
-  conversation and recorded in the control repository as requirements C-2
-  and C-4); item 14 **decided by the author** (2026-09-25, pending decision
-  A9 of the control repository); items 3–13 **experimental**, proposed for
-  the author's review. Packages of one module are implemented (compiler
-  implementation decision 0007); dependencies from local directories and Git
-  origins, `yxy lock`, `yxy fetch`, `--locked` and `--offline` too (compiler
-  implementation decision 0008, 2026-09-27); `add`, `update`, `remove` and
-  the package service are not.
+- Status: Author (items 1–2 and 14), Experimental (items 3–13) — plans/decisions/README.md, L-0011.
+  Items 1–2 are the author's direction (2026-09-25, given in conversation and
+  recorded in the control repository as requirements C-2 and C-4); item 14
+  was decided by the author (2026-09-25, the answer to A9 of the control
+  repository); items 3–13 are open to the author's review. Packages of one
+  module are implemented (compiler implementation decision 0007);
+  dependencies from local directories and Git origins, `yxy lock`, `yxy
+  fetch`, `--locked` and `--offline` too (compiler implementation decision
+  0008, 2026-09-27); `add`, `update`, `remove` and the package service are
+  not.
 - Date: 2026-09-25
 - Spec: `modules.md`. When integrated, it changes `semantics.md` [PRG-1],
   [PRG-2], [DECL-3], [EFF-3], [ABI-1], §12 and `syntax.md` [LEX-5], [LEX-6],

@@ -1,11 +1,13 @@
 # Decision 0008: Typed holes
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0008
 - Date: 2026-09-25
 - Spec: `semantics.md` [HOLE-1]
 - Errata (2026-09-26): wording only; no rule changed. The decision promised
   more than the compiler does: the reach of [HOLE-1] in this version is
   stated below and in the specification.
+- Errata (2026-09-29): wording only; no rule changed. The reach below
+  followed the compiler's partial facts (compiler requirement R756).
 
 ## Decision
 
@@ -14,13 +16,13 @@ compiler reports it with the type expected at that position when the context
 gives one, and says when it does not; `check` and `build` reject any program
 that contains one.
 
-In this version (errata of 2026-09-26) the expected type is part of the
-diagnostic's text (a note of E0313), not a field of its own, and a program
-that still contains a hole has no facts (`inspect --json`) for its other
-functions either (tested by `json_outputs_are_valid_and_stdout_only` in the
-compiler's conformance suite). A structured description of holes for tools
-and agents — the expected type as data, the names in scope, facts of the rest
-of the program — is future work.
+In this version (errata of 2026-09-26 and 2026-09-29) the diagnostic gives
+the expected type in its text (a note of E0313). When every error of a
+program lies in the body of a function, holes included, `inspect --json`
+still gives the facts of its other functions: partial facts that list each
+function with an error or a hole as a gap, with its holes and each hole's
+expected type as data (`expected_type`, `null` when the context gives none;
+compiler requirement R756). The names in scope at a hole are future work.
 
 ## Alternatives
 

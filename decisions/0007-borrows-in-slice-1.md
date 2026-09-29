@@ -1,6 +1,6 @@
 # Decision 0007: Borrows in the first subset
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0007
 - Date: 2026-09-25
 - Spec: `semantics.md` §4
 - Amendment (2026-09-28, experimental): decision 0015 adds a second

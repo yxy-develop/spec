@@ -1,6 +1,6 @@
 # Decision 0002: Declarations and mutability
 
-- Status: Accepted — experimental (proposed by the orchestrator under the
+- Status: Experimental — plans/decisions/README.md, L-0002 (proposed under the
   author's bootstrap instructions, §5; open to the author's review)
 - Date: 2026-09-25
 - Spec: `semantics.md` [DECL-1]–[DECL-5]

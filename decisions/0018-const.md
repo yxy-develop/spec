@@ -1,10 +1,11 @@
 # Decision 0018: Constants, and warnings of certain traps
 
-- Status: Accepted — **experimental** (proposed with task TASK-20260926-035
-  of the master plan of 2026-09-26, Phase 5, after the architecture audit of
-  2026-09-26: T19, option (2), a research recommendation, and §21 C2,
-  option (1), with correction 4 of its legend; revised after its review of
-  2026-09-28; open to the author's review at the gate of 0.1, below)
+- Status: Experimental — plans/decisions/README.md, L-0018
+  (proposed with task TASK-20260926-035 of the master plan of 2026-09-26,
+  Phase 5, after the architecture audit of 2026-09-26: T19, option (2), a
+  research recommendation, and §21 C2, option (1), with correction 4 of its
+  legend; revised after its review of 2026-09-28; open to the author's review
+  at the gate of 0.1, below)
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-5], [LEX-6], §3 (`const_decl`, the length of
   `[T; N]` and of `[value; N]`); `semantics.md` [PRG-2], the table of §2,

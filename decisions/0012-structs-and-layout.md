@@ -1,7 +1,7 @@
 # Decision 0012: Structs as value types, and their layout per target
 
-- Status: Accepted — **experimental** (proposed under task
-  TASK-20260925-002; open to the author's review)
+- Status: Experimental — plans/decisions/README.md, L-0012
+  (proposed under task TASK-20260925-002; open to the author's review)
 - Date: 2026-09-25
 - Spec: `syntax.md` [LEX-5], [LEX-6], [NL-6], [NL-8], [GR-6], [GR-7];
   `semantics.md` §2.1 [STRUCT-1]–[STRUCT-9], [TY-1], [DECL-2], [ORD-5],

@@ -7,8 +7,8 @@ experimental and changes through recorded decisions until 1.0.
 |---|---|
 | `syntax.md` | Lexical structure, newline rules, grammar (EBNF), operators |
 | `semantics.md` | Types, structs, enums with data, declarations, constants, borrows, borrowed text, cells, `match` and its patterns, loops, evaluation, integer rules, floating point, effects, the console capability, the C boundary, a glossary |
-| `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental; packages of one module implemented, dependencies not yet |
-| `decisions/NNNN-*.md` | Accepted language decisions, with context, alternatives and what could change them |
+| `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental; packages of one module, dependencies from directories and Git origins, the lock and fetching implemented; the package service not yet |
+| `decisions/NNNN-*.md` | Language decisions, with their state and register ID, context, alternatives and what could change them |
 | `decisions/OPEN.md` | Open questions with the provisional choice in force |
 
 The specification describes intent. What the compiler implements today is
@@ -31,9 +31,10 @@ experimental e muda por decisões registradas até a versão 1.0.
   `match` e seus padrões, laços, avaliação, aritmética inteira, ponto
   flutuante, efeitos, a capacidade de console, fronteira com C e um glossário.
 - `modules.md`: pacotes, módulos, imports, visibilidade, manifesto e lock
-  (experimental; pacotes de um módulo já implementados, dependências ainda
-  não).
-- `decisions/`: decisões aceitas e questões abertas.
+  (experimental; pacotes de um módulo, dependências de diretórios e de
+  origens Git, o lock e o `fetch` já implementados; o serviço de pacotes
+  ainda não).
+- `decisions/`: decisões de linguagem, com estado e ID do registro, e questões abertas.
 
 A especificação descreve a intenção. O que o compilador implementa hoje fica
 registrado, requisito por requisito, no repositório do compilador
