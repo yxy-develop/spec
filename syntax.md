@@ -210,7 +210,7 @@ fn_decl     = [ "export" | "extern" ] "fn" IDENT "(" [ params ] ")" [ "->" type 
               effects [ body ] NL ;
 const_decl  = "const" IDENT ":" type ":=" expr NL ;   (* decision 0018; semantics.md [CONST-1], [CONST-2] *)
 params      = param { "," param } [ "," ] ;
-param       = IDENT ":" type ;
+param       = [ "take" ] IDENT ":" type ;          (* decision 0020: `take` only before a name, semantics.md [OWN-3] *)
 effects     = "effects" "{" [ IDENT { "," IDENT } [ "," ] ] "}" ;
 body        = "{" ( cell | { stmt } ) "}" ;          (* required unless `extern` *)
 
@@ -245,7 +245,7 @@ type        = qual_name [ "<" type { "," type } ">" ]
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" ) unary | postfix ;
-postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant or console.operation *)
+postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant, console.operation or x.copy (decision 0020) *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
@@ -291,8 +291,12 @@ before decision 0017 they were refused (#33).
   capability, written with the capability before `.`: `console.print(x)`,
   where `console` is a parameter or local variable of type `Console`
   (`semantics.md` [CON-2]); names of imports and of variables never collide
-  ([IMP-5]), so the first name says which form it is. Other method calls
-  (`x.f()`) are not supported.
+  ([IMP-5]), so the first name says which form it is. *(experimental,
+  decision 0020)* The second exception is the explicit copy, `.copy()`
+  with no argument after any operand but an import's name: `p.copy()`,
+  `p.inner.copy()`, `a[i].copy()`, `make().copy()` (`semantics.md`
+  [OWN-6]); `pkg.copy()` stays a call of the function `copy` of the import
+  `pkg`. Other method calls (`x.f()`) are not supported.
 - **[GR-2]** A cell occupies the whole function body. Region headers after
   ordinary statements, or inside nested blocks, are errors.
 - **[GR-3]** *(experimental)* `if` is a statement, not an expression.
@@ -364,7 +368,7 @@ before decision 0017 they were refused (#33).
 
 | Precedence (high → low) | Operators | Associativity |
 |---|---|---|
-| 11 | postfix: call, `[i]`, `.name` (field, `.len`, `.bytes`, variant), `?` | left |
+| 11 | postfix: call, `[i]`, `.name` (field, `.len`, `.bytes`, variant), `.copy()` (decision 0020), `?` | left |
 | 10 | prefix: `-` `!` `&` | right |
 | 9 | `*` `/` `%` | left |
 | 8 | `+` `-` | left |
