@@ -1,8 +1,9 @@
 # Decision 0013: Guarantees at the C boundary
 
-- Status: Accepted — **experimental** (proposed in the conformance phase that
-  follows the architecture audit of 2026-09-26, tasks TASK-20260926-014, 015,
-  016, 017 and 024; open to the author's review)
+- Status: Experimental — plans/decisions/README.md, L-0013
+  (proposed in the conformance phase that follows the architecture audit of
+  2026-09-26, tasks TASK-20260926-014, 015, 016, 017 and 024; open to the
+  author's review)
 - Date: 2026-09-26; item 5 amended 2026-09-27
 - Spec: `semantics.md` [TRAP-1], [EFF-5], [ABI-2], [ABI-3]; `OPEN.md` #44,
   #45 (numbers 41 to 43 were held for entries planned elsewhere, written on

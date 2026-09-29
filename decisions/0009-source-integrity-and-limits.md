@@ -1,6 +1,6 @@
 # Decision 0009: Source integrity and limits
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0009
 - Date: 2026-09-25
 - Spec: `syntax.md` [LEX-3a], [GR-5]; `semantics.md` [TY-6], [DECL-6]
 - Origin: adversarial review of the specification draft (2026-09-25), whose

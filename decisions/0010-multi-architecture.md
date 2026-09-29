@@ -1,8 +1,8 @@
 # Decision 0010: Multi-architecture and target-dependent integers
 
-- Status: **Accepted — decided by the author** (item 1, 2026-09-25, conveyed
-  through the portability review in the control repository); items 2–4 are
-  experimental
+- Status: Author (item 1), Experimental (items 2–4) — plans/decisions/README.md, L-0010.
+  Item 1 was decided by the author on 2026-09-25, conveyed through the
+  portability review in the control repository.
 - Spec: `semantics.md` [TY-2], [CONV-1], [TGT-1]–[TGT-3]
 
 ## Decision

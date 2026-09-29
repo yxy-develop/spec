@@ -909,12 +909,12 @@ stream, the effect that a write may happen.
   compiler reports each hole with the type expected at that position when the
   context gives one (and says when it does not), in its human and structured
   diagnostics; `check` and `build` reject any program that still contains a
-  hole. *(Scope in this version: the expected type is part of the
-  diagnostic's text, not a field of its own, and a program that still contains
-  a hole has no facts (`inspect`) for its other functions either. A
-  structured description of holes for tools and agents — the expected type as
-  data, the names in scope, facts of the rest of the program — is future
-  work.)*
+  hole. *(Scope in this version: the diagnostic gives the expected type in
+  its text. When every error of a program lies in the body of a function,
+  holes included, `inspect` still gives the facts of its other functions:
+  partial facts that list each function with an error or a hole as a gap,
+  with its holes and each hole's expected type as data (none when the context
+  gives none). The names in scope at a hole are future work.)*
 
 ## 12. Outside this version
 
@@ -926,8 +926,7 @@ values, method calls (other than the operations of a `Console`, [CON-2]),
 loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating a `mut` array or text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
-dependencies on other modules, manifest requirements,
-the lock and fetching (specified in `modules.md`, not implemented), `unsafe`, `&mut`, references other than slices,
+`unsafe`, `&mut`, references other than slices,
 arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named

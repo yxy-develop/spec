@@ -1,6 +1,6 @@
 # Decision 0005: Effects in the first subset
 
-- Status: Accepted — experimental
+- Status: Experimental — plans/decisions/README.md, L-0005
 - Date: 2026-09-25
 - Spec: `semantics.md` §7, §8
 - Errata (2026-09-27): wording only; no rule changed. [EFF-2] no longer

@@ -700,7 +700,8 @@ path_char = "a"…"z" | "0"…"9" | "-" | "." | "_" | "/" ;
 
 The status of each rule, with its tests, is in the compiler repository
 (`docs/implementation/STATUS.md`, requirements R92–R109 and R200–R216, and
-implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
+implementation decisions 0006, 0007, 0008 and 0011). In short, as of
+2026-09-29:
 
 - **Implemented** for packages of one module: [MIG-1] (the clause is
   `package`; `module` is rejected with a mechanical fix; [MIG-2] is past),
@@ -718,8 +719,8 @@ implementation decisions 0006, 0007 and 0008). In short, as of 2026-09-27:
   main manifest, or the repository derived for `github.com` and
   `codeberg.org`), [PATH-8], [MAN-1]–[MAN-7], [LOCK-1]–[LOCK-7] (with the
   resolver identity of [LOCK-2], `resolver = "mvs-1"`), [DEP-2], [DEP-4],
-  [DEP-5] (except `test`, which does not exist yet: its part of [DEP-5] is
-  due with the command), [DEP-6] and [DEP-7] for `yxy lock`, [DEP-8],
+  [DEP-5] (`yxy test` loads a module as the builds do, compiler
+  implementation decision 0011), [DEP-6] and [DEP-7] for `yxy lock`, [DEP-8],
   [DEP-9], [VER-1], [VER-2], [VER-4], [VER-5], [NET-1]–[NET-4], [NET-6],
   [INIT-3]; `yxy lock` and `yxy fetch`. The paths of modules and imports are
   checked by one validator of [PATH-1]–[PATH-5]. `yxy lock` treats every

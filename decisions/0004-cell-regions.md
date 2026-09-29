@@ -1,7 +1,7 @@
 # Decision 0004: Cell regions
 
-- Status: Accepted — experimental; item 3 is the author's decision A1
-  (2026-09-26), itself experimental
+- Status: Experimental — plans/decisions/README.md, L-0004; item 3 is the author's
+  decision A1 (2026-09-26), itself experimental
 - Date: 2026-09-25; item 3 revised 2026-09-26
 - Spec: `semantics.md` [CELL-1]–[CELL-8], `syntax.md` §5
 - Errata (2026-09-26): wording only; no rule changed. Item 4 and [CELL-6]

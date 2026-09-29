@@ -1,9 +1,9 @@
 # Decision 0016: Loops: `loop`, `for`, `break` and `continue`
 
-- Status: Accepted — **experimental** (proposed with task
-  TASK-20260926-033 of the master plan of 2026-09-26, Phase 5; open to the
-  author's review; the type of a range of literals (item 3) is reviewed by
-  the author at the gate of 0.1)
+- Status: Experimental — plans/decisions/README.md, L-0016
+  (proposed with task TASK-20260926-033 of the master plan of 2026-09-26,
+  Phase 5; open to the author's review; the type of a range of literals (item
+  3) is reviewed by the author at the gate of 0.1)
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-5], [LEX-6], [NL-8], [GR-6], [GR-8], §3 (`loop`,
   `for`, `break`, `continue`); `semantics.md` [TY-4], [DECL-3], [FN-2],
@@ -195,9 +195,10 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   changing it later would break programs.
 - **The rule for loop exits.** Keeping "`while true` never ends": wrong with
   `break` (the problem above). An analysis on a control-flow graph (the
-  MIR-0 of the architecture audit, §6): not yet; the structural rule is exact
-  about the loop a `break` leaves and conservative about ranges and
-  conditions, and the MIR-0 verifier will check it.
+  MIR-0 of the architecture audit, §6): not chosen; the structural rule is
+  exact about the loop a `break` leaves and conservative about ranges and
+  conditions, and the MIR-0 verifier checks it on the graph (compiler
+  implementation decision 0013).
 
 ## What could change it
 

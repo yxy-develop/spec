@@ -1,8 +1,9 @@
 # Decision 0015: Borrowed text and the console capability
 
-- Status: Accepted — **experimental** (proposed with the task that
-  anticipates a minimal core of text and printing, TASK-20260928-080, after
-  the author's decision R-3 of 2026-09-28; open to the author's review)
+- Status: Experimental — plans/decisions/README.md, L-0015
+  (proposed with the task that anticipates a minimal core of text and
+  printing, TASK-20260928-080, after the author's decision R-3 of 2026-09-28;
+  open to the author's review)
 - Date: 2026-09-28
 - Number: 0014 is held by the register's L-0014 ([GR-3], recorded in
   `syntax.md` without a file of its own), so this decision takes 0015

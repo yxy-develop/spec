@@ -1,8 +1,9 @@
 # Decision 0019: Floating point
 
-- Status: Accepted — **experimental** (proposed with TASK-20260926-038,
-  which follows the research recommendation of the architecture audit of
-  2026-09-26, tension T16, option (2); open to the author's review)
+- Status: Experimental — plans/decisions/README.md, L-0019
+  (proposed with TASK-20260926-038, which follows the research recommendation
+  of the architecture audit of 2026-09-26, tension T16, option (2); open to
+  the author's review)
 - Date: 2026-09-28
 - Spec: `syntax.md` [LEX-11], [LEX-19], §3 (`primary`, patterns);
   `semantics.md` §2 (table), [PRG-2], [TY-1], [TY-4], [NUM-5], §6.6

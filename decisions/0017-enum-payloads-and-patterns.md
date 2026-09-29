@@ -1,11 +1,11 @@
 # Decision 0017: Enums with data, struct patterns and the bound of exhaustiveness
 
-- Status: Accepted — **experimental** (proposed with task
-  TASK-20260926-034 of the master plan of 2026-09-26, Phase 5; open to the
-  author's review; the budget of the analysis (item 10), `..` in struct
-  patterns (item 8), the absence of a test of a variant (item 4) and the
-  payloads without overlap (item 5) are reviewed by the author at the gate
-  of 0.1)
+- Status: Experimental — plans/decisions/README.md, L-0017
+  (proposed with task TASK-20260926-034 of the master plan of 2026-09-26,
+  Phase 5; open to the author's review; the budget of the analysis (item 10),
+  `..` in struct patterns (item 8), the absence of a test of a variant (item
+  4) and the payloads without overlap (item 5) are reviewed by the author at
+  the gate of 0.1)
 - Date: 2026-09-28
 - Spec: `syntax.md` §3 (`enum_decl`, `variant`, `pattern`, the note after
   the grammar), [GR-9]; `semantics.md` [TY-1], [TY-3], [DECL-6], §2.2

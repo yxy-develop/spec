@@ -1,6 +1,6 @@
 # Decision 0001: Confirmed author decisions
 
-- Status: Accepted — confirmed by the author (Paulo R. Lima)
+- Status: Author — plans/decisions/README.md, L-0001 (confirmed by the author, Paulo R. Lima)
 - Date: 2026-09-25
 - Source: the author's bootstrap instructions for the first implementation cycle, §2
 
