@@ -94,18 +94,28 @@ What the language has today (structs, enums with data, `Option`,
 5. **Borrowed places** ([OWN-5]): a parameter without `take`, an element of
    an array or slice, the variable of a `for` over elements, and a binding
    of a `match` on one of those are never moved out. A binding of a `match`
-   on a place is that part of the place: moving it moves the part (the
-   whole place when a variant's value is on the way), so a use of the
-   subject after it is an error; that is (C)'s rule C5 (a `match` consumes
-   its subject only where the subject is not used after), written as a rule
-   on the binding.
+   on a place is its own part of the place: the subject and the steps of
+   the pattern to it, a field of a struct or one value of a variant (each
+   value of a variant apart, with the fields inside it). Moving it moves
+   that part only: the other bindings stay usable, and a use of the subject
+   after it is an error (a subject every arm moved a part of is moved).
+   That is (C)'s rule C5 (a `match` consumes its subject only where the
+   subject is not used after, and its bindings then own the parts), written
+   as a rule on the binding: the programs C5 accepts are accepted, and
+   where C5 would refuse the move of a binding because the subject is used
+   after, the error is at that later use (E0360/E0361), with `.copy()` at
+   the move as the fix. A binding is the address of its part, never a copy
+   ([OWN-8]): while it lives (its arm, until it moves) the arm neither
+   assigns nor moves the subject or a place overlapping that part, the
+   exclusivity of C7 for pattern bindings; `match x.copy()` is the fix.
 6. **The explicit copy** ([OWN-6]): `x.copy()`, for a value of a move type
    only (every component of every such type copies in this version); `.copy()`
    of a copy type is an error.
 7. **Arguments are lent** ([OWN-7]): a place given to a parameter without
    `take` is borrowed from its evaluation until the call returns (no longer
-   a snapshot taken when it is evaluated); a later argument that assigns or
-   moves that place, or one that overlaps it, is an error.
+   a snapshot taken when it is evaluated), and with a binding of a `match`
+   the part of the subject it is; a later argument that assigns or moves
+   that place, or one that overlaps it, is an error.
 8. **Nothing silent, no size** ([OWN-8]): the compiler inserts no copy to
    make a use valid, and the fix its diagnostics suggest is `.copy()`, as a
    suggestion.
@@ -113,6 +123,12 @@ What the language has today (structs, enums with data, `Option`,
 The compiler checks rules 4, 5 and 7 with a flow analysis on its MIR (the
 compiler repository, `compiler/src/moves.rs`, codes E0360–E0363), and
 refuses `.copy()` of a copy type (E0364) and `take` on a copy type (E0365).
+A place changed while it is borrowed, by an earlier argument or by a
+binding of a `match` in its arm, is one code, E0363 ("place changed while
+it is borrowed"): one class of cause, the study's E-EXCL, whose fix is the
+same explicit copy of the borrowed value; the message says which borrow.
+The analysis also runs when the only other errors are E0364 and E0365,
+whose mechanical fixes leave the typed program whole.
 The generated code of a valid program is unchanged in meaning: a move is
 carried out by copying bytes where the lowering does not avoid it, and the
 tools report every such copy with its size, the explicit copies apart
@@ -136,7 +152,7 @@ these; they are reviewed by the author at the gate of 0.2:
 | 8 | Arguments are no longer snapshots: an argument is borrowed or moved when it is evaluated | [OWN-7], E0363 |
 | 11 | Moves are not written at the use (MV0) | [OWN-2] |
 | 12 | `take` is a contextual word, written at the parameter and not at the call | [OWN-3] |
-| 15 | A `match` consumes its subject only where the subject is not used after (here: moving a binding moves its part of the subject) | [OWN-5] |
+| 15 | A `match` consumes its subject only where the subject is not used after (here: moving a binding moves its own part of the subject, a field or one value of a variant, and a later use of the subject is the error) | [OWN-5] |
 
 Choice 9 (hoisting a copy before a call whose arguments conflict) needs
 `inout`: here the conflict of [OWN-7] is fixed by `.copy()` on the earlier
@@ -149,7 +165,7 @@ and 16 (a trap and a foreign unwind run no destructor) have nothing to act
 on before TASK-20260926-042. Choice 17 (names taken by the spelling) is
 answered by S1, which takes none.
 
-Two choices are this task's, under R-7, and are reviewed with the others:
+Three choices are this task's, under R-7, and are reviewed with the others:
 
 - **`.copy()` exists only for the move types**, and `.copy()` of a copy type
   is an error with a mechanical fix that removes it (E0364). The study's
@@ -158,6 +174,17 @@ Two choices are this task's, under R-7, and are reviewed with the others:
   copies that cost more than a value of a copy type.
 - **`take` exists only before a parameter whose type moves** (E0365, with a
   mechanical fix that removes it).
+- **An arm does not change its subject while a binding of it lives**, also
+  when the `match` consumes the subject (the review of this task,
+  2026-09-29). Under C5 the bindings of a consuming `match` own their
+  parts, so an arm could give the subject a new value while a binding it
+  has not moved still holds its old part; that binding would then need
+  storage of its own, a copy the program did not write (M-2, [OWN-8]).
+  The binding is instead always the address of its part, and such an arm
+  is E0363 with `match x.copy()` as the fix; once the binding moves, the
+  arm may assign the subject. Allowing it later (with a move of the
+  binding into storage of its own, written or reported) accepts every
+  program valid today.
 
 ## Alternatives
 
@@ -199,11 +226,11 @@ Two choices are this task's, under R-7, and are reviewed with the others:
 ## What could change it
 
 - The author's review at the gate of 0.2: every choice of part 1, the
-  choices of part 3, and the two choices of this task.
+  choices of part 3, and the three choices of this task.
 - TASK-20260926-042 (MIR-1): `inout`, `&mut [T]`, the exclusivity of
-  borrows beyond arguments (a place changed while a view or a binding of it
-  lives), destructors and their order, U1, and the generalization of these
-  rules to the types with an owner.
+  borrows beyond arguments and `match` bindings (a place changed while a
+  view of it lives), destructors and their order, U1, and the
+  generalization of these rules to the types with an owner.
 - TASK-20260926-043 and -044: the owned string, whose copy is deep and
   allocates (`.copy()` then allocates, under (d) and O2), and the layers.
 - K1, if programs show many copies of small structs that a marker would

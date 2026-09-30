@@ -433,13 +433,24 @@ lifetime of their own or owned resources (TASK-20260926-042).
   with a hole); the variable of `for x in s` over elements of a move type,
   which borrows each element for one iteration ([LOOP-4]). A binding of a
   `match` that binds a part of a move type of a subject that is a place
-  **is that part of the place**: moving the binding moves that part of the
-  subject (the whole subject when the value of a variant, of `Some`, `Ok`
-  or `Err` is on the way), which is an error when the subject is a
-  borrowed place (above, or such a binding), and otherwise makes a later
-  use of the subject an error by [OWN-4]. A binding of a subject that is
-  not a place owns its part. So a `match` consumes its subject only where
-  nothing uses the subject after it.
+  **is that part of the place**: the subject and the steps of the pattern
+  to the binding, each a field of a struct or one value of a variant (of
+  `Some`, `Ok`, `Err`, or a variant with data, whose values are parts
+  apart). Moving the binding moves that part only, which is an error when
+  the subject is a borrowed place (above, or such a binding), and otherwise
+  makes a later use of the subject an error by [OWN-4]; the other bindings
+  stay usable (`T.Two(a, b) => f(a, b)` with `take` parameters is valid),
+  and a subject every arm of whose `match` moved a part is moved. A
+  binding of a subject that is not a place owns its part. So a `match`
+  consumes its subject only where nothing uses the subject after it. *(The
+  review of TASK-20260926-078, 2026-09-29.)* **A binding borrows its
+  part**: a binding is never a copy of its part ([OWN-8]), so while it
+  lives (in its arm, until it moves) its arm neither assigns nor moves the
+  subject, or a place that overlaps that part; the same holds for the place
+  that holds the value of `x?` bound by a `match`. That is an error, whose
+  fix is `match x.copy()`, a `match` on a copy the arm cannot change (or,
+  for a move, `.copy()` where the place moves). A binding that moved
+  borrows nothing, and its arm may give the subject a new value.
 - **[OWN-6]** *(the explicit copy)* `x.copy()`, a postfix operation, gives a
   new value equal to the value of `x`, of the same type; `x` keeps its
   value, and the copy is independent of it (changing one never changes the
@@ -456,14 +467,18 @@ lifetime of their own or owned resources (TASK-20260926-042).
   returns; it is not a copy taken when it is evaluated. A later argument of
   the same call that assigns or moves that place, or a place that overlaps
   it (one contains the other; two elements of one array, whatever their
-  indices), is an error. Writing `x.copy()` for the earlier argument passes
-  the value as it was when it was evaluated. An argument of a `take`
+  indices), is an error; a binding of a `match` lends with it the part of
+  the subject it is ([OWN-5]). Writing `x.copy()` for the earlier argument
+  passes the value as it was when it was evaluated; for a move, `.copy()`
+  where the place moves keeps it unchanged. An argument of a `take`
   parameter moves when it is evaluated ([OWN-2]).
 - **[OWN-8]** *(nothing silent, no size)* The compiler never inserts a copy,
   a reference count or any indirection to make a use valid: the fix its
   diagnostics suggest for [OWN-4], [OWN-5] and [OWN-7] is the explicit copy,
   `.copy()` where the value moves (after the earlier argument for
-  [OWN-7]), as a suggestion, never as a mechanical fix. Whether a type
+  [OWN-7], after the subject of the `match` for a binding, [OWN-5]), as a
+  suggestion, never as a mechanical fix; a binding of a `match` is never a
+  copy of its part. Whether a type
   moves depends only on its declaration, never on its size or on the target
   ([TGT-2]): a struct of one byte and one of 16 384 components move and
   copy alike. A move may be carried out by copying bytes; the tools report
