@@ -705,8 +705,10 @@ hold in every build mode; there is no unchecked release mode.
 
 - **[TRAP-1]** A trap writes one report to standard error and ends the
   process with exit status **101**. The report names the kind of failure (the
-  table of §6.2, a refused console write, [CON-4], or *(decision 0019)* a
-  float-to-integer conversion out of range, [FLT-8]) and the position of the
+  table of §6.2, a refused console write, [CON-4], *(decision 0019)* a
+  float-to-integer conversion out of range, [FLT-8], or *(decision 0021)* a
+  failed allocation, [ALLOC-3], which no operation of this version makes)
+  and the position of the
   checked operation,
   `<file>:<line>:<column>`; by default it is one line of text,
   `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
@@ -861,9 +863,9 @@ Both operands have the same integer type, taken from them or from context.
   Yxy — and *(experimental, decision 0015)* `console` — writing through a
   `Console` capability ([CON-3]). Other names are errors. The set will grow as
   the standard library appears. Which other concerns become effects is not
-  settled: files, network, clock and randomness are candidates, and allocation has facets of
-  an effect, a capability and a type, to be decided with ownership
-  (`decisions/OPEN.md` #6). *(experimental)* The criterion of
+  settled: files, network, clock and randomness are candidates. Allocation
+  is not an effect *(experimental, decision 0021)*: it is what the `alloc`
+  layer gives ([ALLOC-1]). *(experimental)* The criterion of
   `decisions/OPEN.md` #9 (type, contract, effect or capability) is applied to
   each candidate.
 - **[EFF-3]** At every call, the callee's declared effects must be a subset of
@@ -910,7 +912,7 @@ Both operands have the same integer type, taken from them or from context.
 | trap | not an effect; it writes its message to standard error and ends the process |
 | typed failure (`Result`, `require`, `?`) | not an effect; it is in the return type |
 | mutation of a local `mut` variable | not an effect |
-| allocation | does not exist in this version |
+| allocation | not an effect: what the `alloc` layer gives ([ALLOC-1]); no operation of this version allocates |
 
 Static effect checking is not an operating-system sandbox.
 
@@ -948,6 +950,40 @@ stream, the effect that a write may happen.
   recoverable and are documented as trapping. On a pipe whose reader has
   gone, the operating system's default for SIGPIPE applies (it ends the
   process); a program does not change signal dispositions.
+
+### 7.2 Allocation and out of memory *(experimental, decision 0021)*
+
+The layers of the standard library are in `modules.md` [STD-2] and
+[STD-5]–[STD-8]; the owned heap types, with the place and the shape of their
+operations, in decision 0021, part 5. No operation of this version
+allocates: these rules are the policy that the owned string, the list and
+the box follow when they come (TASK-20260926-042 and -043).
+
+- **[ALLOC-1]** Allocation is what the `alloc` layer gives: only the
+  operations of the packages of `alloc` (and those of `std` that use them)
+  allocate, and the explicit copy of an owned heap value, which is deep
+  ([OWN-6]). Allocation is not an effect ([EFF-2]: `effects {}` does not
+  mean "does not allocate"), and no operation takes an allocator argument.
+  "Does not allocate" is said of a package or a program whose layer is
+  `core` (`modules.md` [STD-5], [STD-7]), not of one function. The hosted
+  runtime supplies the allocator; how a freestanding program supplies one is
+  part of its profile (OPEN #41).
+- **[ALLOC-2]** Freeing never fails. An owned heap value is freed when it is
+  destroyed.
+- **[ALLOC-3]** An operation that allocates has two forms. The **plain**
+  form traps when the allocator has no memory, or when the size asked for
+  does not fit in `usize` or in the target's address space, with the kind
+  *allocation failed* at the operation ([TRAP-1], [TRAP-3]). The **`try_`**
+  form returns `Result<T, alloc.AllocError>` — `Err(OutOfMemory)` or
+  `Err(CapacityOverflow)` — never traps for lack of memory, and on failure
+  leaves its `inout` operands as they were. `.copy()` of an owned heap
+  value, and `[v; N]` of one, trap like a plain form.
+- **[ALLOC-4]** No abort is hidden behind an operation presented as
+  recoverable (M-4 of the control repository's register): every public
+  function of `alloc` and `std` that can trap says so in its documentation,
+  with the code of each trap it can reach, and one presented as recoverable
+  — a `try_` function, or one whose result is a `Result` or `Option` for a
+  failure — never traps for lack of memory.
 
 ## 8. The C boundary
 
@@ -1071,7 +1107,9 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
-owned strings, characters, the text operations of [TEXT-7], the float
+owned strings, lists and boxes, and every operation that allocates
+(decision 0021: their place and the shape of their operations, [ALLOC-1]–
+[ALLOC-4]), characters, the text operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
 types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 128-bit integers, concurrency (`par`,
