@@ -206,11 +206,11 @@ variant     = IDENT [ "(" type { "," type } [ "," ] ")" ] ;    (* data: semantic
 struct_decl = "struct" IDENT "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
 field       = [ "pub" ] IDENT ":" type ;          (* modules.md [VIS-2], OPEN #28 *)
 
-fn_decl     = [ "export" | "extern" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
-              effects [ body ] NL ;
+fn_decl     = [ "export" | "extern" | "drop" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
+              effects [ body ] NL ;   (* `drop`: decision 0021, a word only before `fn`, semantics.md [DROP-1] *)
 const_decl  = "const" IDENT ":" type ":=" expr NL ;   (* decision 0018; semantics.md [CONST-1], [CONST-2] *)
 params      = param { "," param } [ "," ] ;
-param       = [ "take" ] IDENT ":" type ;          (* decision 0020: `take` only before a name, semantics.md [OWN-3] *)
+param       = [ "take" | "inout" ] IDENT ":" type ;   (* decision 0020: words only before a name, semantics.md [OWN-3], [OWN-9] *)
 effects     = "effects" "{" [ IDENT { "," IDENT } [ "," ] ] "}" ;
 body        = "{" ( cell | { stmt } ) "}" ;          (* required unless `extern` *)
 
@@ -241,14 +241,16 @@ head        = expr ;              (* no unparenthesized struct literal: [GR-6] *
 type        = qual_name [ "<" type { "," type } ">" ]
             | "[" type ";" expr "]"                 (* the length: a constant expression, [CONST-5] *)
             | "&" "[" type "]"
+            | "&" "mut" "[" type "]"                (* decision 0020, TASK-042 part: semantics.md [REF-6] *)
             | "(" ")" ;
 
 expr        = unary { binop unary } ;                (* see §4 *)
-unary       = ( "-" | "!" | "&" ) unary | postfix ;
-postfix     = primary { "(" [ expr { "," expr } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant, console.operation or x.copy (decision 0020) *)
+unary       = ( "-" | "!" | "&" | "&" "mut" ) unary | postfix ;   (* `&mut`: [REF-6] *)
+postfix     = primary { "(" [ arg { "," arg } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant, console.operation or x.copy (decision 0020) *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
+arg         = [ "inout" ] expr ;   (* decision 0020, TASK-042 part: `inout` is a word only before an operand that starts with IDENT, semantics.md [OWN-9] *)
 primary     = INT | FLOAT | STRING | "true" | "false" | IDENT | HOLE
             | "(" ")" | "(" expr ")"
             | "[" [ expr { "," expr } [ "," ] ] "]"
@@ -369,7 +371,7 @@ before decision 0017 they were refused (#33).
 | Precedence (high → low) | Operators | Associativity |
 |---|---|---|
 | 11 | postfix: call, `[i]`, `.name` (field, `.len`, `.bytes`, variant), `.copy()` (decision 0020), `?` | left |
-| 10 | prefix: `-` `!` `&` | right |
+| 10 | prefix: `-` `!` `&` `&mut` (decision 0020, TASK-042 part) | right |
 | 9 | `*` `/` `%` | left |
 | 8 | `+` `-` | left |
 | 7 | `<<` `>>` | left |
