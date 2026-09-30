@@ -35,15 +35,19 @@ compiler's diagnostic codes are listed in the compiler repository
 | `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
 | `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
-| `[T; N]` | exactly `N` elements (`N` a constant expression, [CONST-5]) | local variables only, created from a literal (`[a, b]` or `[v; N]`) |
+| `[T; N]` | exactly `N` elements (`N` a constant expression, [CONST-5]) | local variables only, created from a literal (`[a, b]` or `[v; N]`) or as the explicit copy of another (`a.copy()`, decision 0020) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
 - **[TY-1]** *Value types* are `bool`, the integers, the floats *(decision
   0019)*, `()`, enums (also those whose variants hold data, §2.2), structs,
-  and `Option` and `Result` of value types. They are copied on assignment,
-  when passed and when returned. Arrays and slices have value-type elements.
+  and `Option` and `Result` of value types. *(decision 0020)* A value of a
+  copy type ([OWN-1]) is copied on assignment, when passed and when
+  returned; a struct, an enum with data, and an `Option` or `Result` that
+  holds one move ([OWN-2]) and are copied only by `.copy()` ([OWN-6]).
+  *(Before decision 0020 every value type was copied.)* Arrays and slices
+  have value-type elements.
 - **[TY-2]** `usize` and `isize` have the pointer width of the target's data
   model: 32 or 64 bits in this version. They are distinct types from `u32`,
   `u64`, `i32` and `i64` on every target. All other integer types have the
@@ -66,10 +70,12 @@ compiler's diagnostic codes are listed in the compiler repository
   integer.
 - **[TY-5]** `None`, `Ok(…)` and `Err(…)` need an expected type. `Some(v)` can
   take its type from `v`.
-- **[TY-6]** Arrays are created only from literals. Copying a whole array from
-  another array (`b := a`) is not supported yet, so no buffer is ever copied
-  silently; an array is read elsewhere through a borrow (`&a`). A `match` does
-  not produce arrays or slices.
+- **[TY-6]** Arrays are created from literals, and *(decision 0020, arrays
+  R2)* as the explicit copy of a named array, `b := a.copy()` ([OWN-6]).
+  A whole array is never moved nor copied implicitly: `b := a` is an error,
+  so no buffer is ever copied silently; an array is read elsewhere through a
+  borrow (`&a`). *(Before decision 0020 no whole array could be copied.)*
+  A `match` does not produce arrays or slices.
 - **[TY-7]** An enum or struct is identified by the import path of its
   package and its name (`modules.md` [VIS-7]): two packages that declare
   `enum Error` declare two distinct types. Another package's type is written
@@ -104,10 +110,20 @@ compiler's diagnostic codes are listed in the compiler repository
   this version a field of an array element or of a temporary (`make().x`)
   cannot be assigned either; an array element is replaced as a whole
   (`a[i] = Point { ... }`).
-- **[STRUCT-6]** Structs are values ([TY-1]): declaring, assigning, passing,
-  returning, and storing in `Option`, `Result`, arrays or other structs copy
-  the whole value. There is no aliasing: writing a field through one variable
-  never changes another variable, a caller's argument or a stored copy.
+- **[STRUCT-6]** *(changed by decision 0020, 2026-09-29; origin: the
+  author's decision on Q3 of 2026-09-26, that a struct moves by default and
+  is copied only explicitly, never by size, and the provisional ownership
+  surface the author authorized on 2026-09-29, R-7)* Structs are values
+  ([TY-1]) with a single owner: declaring, assigning, passing to a `take`
+  parameter, returning, and storing in `Option`, `Result`, arrays or other
+  structs **move** the value ([OWN-2]), and the place it came from cannot be
+  used until it is given a new value ([OWN-4]); a parameter without `take`
+  borrows its argument for the call ([OWN-3], [OWN-7]). A struct is copied
+  only by `x.copy()` ([OWN-6]), never implicitly and never by its size.
+  There is no aliasing: writing a field through one variable never changes
+  another variable, a caller's argument or a copy. *(Until decision 0020,
+  declaring, assigning, passing, returning and storing copied the whole
+  value.)*
 - **[STRUCT-7]** In this version structs have no equality or ordering
   operators (`a == b` is an error; compare fields), no methods and no C ABI
   ([ABI-2]). *(decision 0017)* A struct is matched with struct patterns
@@ -140,7 +156,8 @@ compiler's diagnostic codes are listed in the compiler repository
   (a struct of scalars is one level), consistent with [GR-5]. The limits
   apply to every struct and enum declaration and to every `Option`/`Result`
   type a program writes or builds (`Some(v)`); an array counts as its element
-  type, since it is never copied whole ([TY-6]). Without them, a few
+  type (an array is never a field, and a whole array is copied only by
+  `.copy()`, [TY-6]). Without them, a few
   declarations could describe a value of millions of components (each struct
   holding two of the previous one) or a chain of structs deep enough to
   exhaust the tools. Both measures are independent of the target ([TGT-2]).
@@ -167,9 +184,11 @@ compiler's diagnostic codes are listed in the compiler repository
   one value prevents the evaluation of the later ones ([ORD-5]). A variant
   with data is always written with its values (`E.V` alone is an error), and
   a variant without data without parentheses (`E.V()` is an error).
-- **[ENUM-3]** An enum with data is a value ([TY-1]): declaring, assigning,
-  passing, returning and storing it in other values copy it whole, with its
-  data, as for structs ([STRUCT-6]); there is no aliasing.
+- **[ENUM-3]** An enum with data is a value ([TY-1]) that moves as a struct
+  does ([STRUCT-6], decision 0020): declaring, assigning, passing to a
+  `take` parameter, returning and storing it in other values move it whole,
+  with its data ([OWN-2]); it is copied only by `.copy()` ([OWN-6]); there
+  is no aliasing. *(Until decision 0020 these copied it whole.)*
 - **[ENUM-4]** `==` and `!=` are not defined for an enum that has a variant
   with data; it is inspected with `match` ([NUM-5]). An enum without data
   keeps them.
@@ -190,7 +209,8 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[DECL-1]** `name := value` declares an **immutable** local variable.
   `mut name := value` declares a mutable one. `name: T := value` and
   `mut name: T := value` add a type annotation. `_ := value` evaluates and
-  discards a value. `let` and `var` do not exist.
+  discards a value; *(decision 0020)* `_ := p` of a place moves nothing
+  ([OWN-2]). `let` and `var` do not exist.
 - **[DECL-2]** `place = value` assigns. The place is a `mut` local variable, an
   element `a[i]` of a `mut` array, or a field `v.f` (at any depth) of a `mut`
   struct variable ([STRUCT-5]). Slices are read-only and cannot be reassigned.
@@ -305,8 +325,10 @@ compiler's diagnostic codes are listed in the compiler repository
   (`s[i..j]`, `decisions/OPEN.md` #47). This is a restriction of the subset,
   like [REF-2]: lifting it, with places that carry projections (OPEN #37,
   #47), changes no valid program.
-- **[REF-5]** All types of this version are copied; there are no move-only
-  values yet, so use-after-move cannot occur.
+- **[REF-5]** *(decision 0020)* Structs, enums with data, `Option` and
+  `Result` that hold one, and arrays move ([OWN-1]); a use after a move is
+  an error ([OWN-4]). *(Before decision 0020 every type was copied, and
+  use-after-move could not occur.)*
 
 ### 4.1 Text *(experimental, decision 0015)*
 
@@ -349,6 +371,118 @@ them.
   formatting (formatting functions, format strings, `print` with several
   arguments), sub-slices, fields and methods of text other than `.len` and
   `.bytes`, and `match` on text.
+
+### 4.2 Ownership *(experimental, decision 0020)*
+
+A value has a single owner. A value of a copy type is copied where it is
+used; a value of a move type **moves**: the place it came from gives it
+away. Only `x.copy()` copies a value of a move type. The direction of this
+section is the ownership surface (C) of decision 0020 (values, `inout` and
+limited borrows); this version has its part without `inout`, views with a
+lifetime of their own or owned resources (TASK-20260926-042).
+
+- **[OWN-1]** *(classes)* The **copy types** are `bool`, the integers, the
+  floats, `()`, enums without data, `Option` and `Result` whose type
+  arguments are all copy types, `&[T]`, `&str` and `Console` (copying a
+  capability copies the authority, [CON-1]). The **move types** are every
+  struct, every enum with a variant that holds data, `Option` and `Result`
+  with a move type as an argument, and every array. No struct and no enum
+  with data is a copy type; which types move depends on their declaration
+  only ([OWN-8]).
+- **[OWN-2]** *(moving uses)* A place ([REF-4], [STRUCT-4]: a variable, a
+  field of a place, an element) of a move type **moves** when it is: the
+  value of a declaration; the right side of an assignment (to a variable, a
+  field or an element); an argument of a `take` parameter ([OWN-3]); the
+  operand of `return` or the error of `require`; a field value of a struct
+  literal, a value of a variant, the value of `Some`, `Ok` or `Err`, an
+  element of an array literal; the value of `[v; N]`, which the repetition
+  copies into the other elements ([ORD-4]: the one written form of copying
+  besides `.copy()`); the value of a `match` arm; the operand of `?`, which
+  moves the payload out of the place. Nothing else moves: `_ := p`,
+  reading a field of a copy type (`p.x`), `.len`, comparisons, `&a`, an
+  argument of a parameter without `take` ([OWN-7]), the subject of a
+  `match` ([OWN-5]), the operand of `.copy()`. A value that is not a place
+  (a call, a literal, a field of a temporary) is a new value, and using it
+  moves nothing. A move is not written where it happens: the type and the
+  position say it.
+- **[OWN-3]** *(parameters)* A parameter `p: T` of a move type **borrows**
+  its argument for the call: the function reads it, passes it to
+  parameters without `take` and copies it, but never moves it or a part of
+  it out ([OWN-5]); of a copy type, it is a copy, as before. A parameter
+  `take p: T` **receives** the value: the argument moves ([OWN-2]), and the
+  function owns it, as a variable declared with `:=`. `take` is written
+  only before a parameter whose type moves, and is a word only there, so a
+  name `take` stays usable. Parameters stay immutable bindings
+  ([STRUCT-5]).
+- **[OWN-4]** *(moved places)* After a moving use of a place `p`, `p` is
+  moved on that path until a whole assignment `p = e` (a `mut` variable,
+  [DECL-2]) gives it a value again. A use of `p`, or of a place that
+  contains it or that it contains, where `p` is moved on every path that
+  reaches the use, is an error; so is a use where `p` is moved on some of
+  those paths only (**maybe-moved**: in one branch of an `if` or of a
+  `match`, or in an earlier iteration of a loop that reaches the use
+  again): nothing records at run time whether a value moved. Moving a field
+  `p.f` of a variable that owns its value (a **partial move**) moves `p.f`
+  and its parts; the other fields stay usable, and `p` as a whole is not,
+  until `p` or `p.f` is assigned. Assigning a field of a moved place is an
+  error.
+- **[OWN-5]** *(borrowed places)* A value the function does not own is never
+  moved out, whatever the position: a parameter without `take` and its
+  parts ([OWN-3]); an element of an array or slice and its parts (`x :=
+  a[i]`, `a[j] = a[i]`, `return s[0]` are errors: the array would be left
+  with a hole); the variable of `for x in s` over elements of a move type,
+  which borrows each element for one iteration ([LOOP-4]). A binding of a
+  `match` that binds a part of a move type of a subject that is a place
+  **is that part of the place**: the subject and the steps of the pattern
+  to the binding, each a field of a struct or one value of a variant (of
+  `Some`, `Ok`, `Err`, or a variant with data, whose values are parts
+  apart). Moving the binding moves that part only, which is an error when
+  the subject is a borrowed place (above, or such a binding), and otherwise
+  makes a later use of the subject an error by [OWN-4]; the other bindings
+  stay usable (`T.Two(a, b) => f(a, b)` with `take` parameters is valid),
+  and a subject every arm of whose `match` moved a part is moved. A
+  binding of a subject that is not a place owns its part. So a `match`
+  consumes its subject only where nothing uses the subject after it. *(The
+  review of TASK-20260926-078, 2026-09-29.)* **A binding borrows its
+  part**: a binding is never a copy of its part ([OWN-8]), so while it
+  lives (in its arm, until it moves) its arm neither assigns nor moves the
+  subject, or a place that overlaps that part; the same holds for the place
+  that holds the value of `x?` bound by a `match`. That is an error, whose
+  fix is `match x.copy()`, a `match` on a copy the arm cannot change (or,
+  for a move, `.copy()` where the place moves). A binding that moved
+  borrows nothing, and its arm may give the subject a new value.
+- **[OWN-6]** *(the explicit copy)* `x.copy()`, a postfix operation, gives a
+  new value equal to the value of `x`, of the same type; `x` keeps its
+  value, and the copy is independent of it (changing one never changes the
+  other). It is not a moving use of `x`. It exists for exactly the move
+  types of [OWN-1], all of whose parts copy in this version: structs, enums
+  with data, `Option` and `Result` that hold one, and arrays (a whole array,
+  copied element by element, [TY-6]); `.copy()` of a value of a copy type
+  is an error. A copy costs the size of the value, which the tools report.
+  A field named `copy` stays a field (`p.copy` reads it), and
+  `pkg.copy()` is the function `copy` of an import ([IMP-5]: a variable and
+  an import never share a name).
+- **[OWN-7]** *(arguments are lent)* A place given to a parameter without
+  `take` is **borrowed** from the moment it is evaluated until the call
+  returns; it is not a copy taken when it is evaluated. A later argument of
+  the same call that assigns or moves that place, or a place that overlaps
+  it (one contains the other; two elements of one array, whatever their
+  indices), is an error; a binding of a `match` lends with it the part of
+  the subject it is ([OWN-5]). Writing `x.copy()` for the earlier argument
+  passes the value as it was when it was evaluated; for a move, `.copy()`
+  where the place moves keeps it unchanged. An argument of a `take`
+  parameter moves when it is evaluated ([OWN-2]).
+- **[OWN-8]** *(nothing silent, no size)* The compiler never inserts a copy,
+  a reference count or any indirection to make a use valid: the fix its
+  diagnostics suggest for [OWN-4], [OWN-5] and [OWN-7] is the explicit copy,
+  `.copy()` where the value moves (after the earlier argument for
+  [OWN-7], after the subject of the `match` for a binding, [OWN-5]), as a
+  suggestion, never as a mechanical fix; a binding of a `match` is never a
+  copy of its part. Whether a type
+  moves depends only on its declaration, never on its size or on the target
+  ([TGT-2]): a struct of one byte and one of 16 384 components move and
+  copy alike. A move may be carried out by copying bytes; the tools report
+  those copies with their size, and the explicit copies apart.
 
 ## 5. Functions and cells
 
@@ -482,8 +616,9 @@ them.
   parameter or local, `&a`, `t.bytes`: any expression of type `&[T]`) or of
   an array local named `s`, which is the same as `&s` and requires the same
   ([REF-1]): an array that is not `mut`. The source is evaluated once; each
-  iteration binds `x` to a copy of the next element, from the first to the
-  last. A slice views an immutable array, so nothing changes its elements or
+  iteration binds `x` to the next element, from the first to the last: a
+  copy of it for a copy type, and *(decision 0020)* a borrow of it, for one
+  iteration, for a type that moves ([OWN-5]). A slice views an immutable array, so nothing changes its elements or
   its length while the loop runs, and iterating needs no check at run time.
   A `mut` array is iterated by index (`for i in 0..a.len { … a[i] … }`).
   Text is not iterated ([TEXT-7]); its bytes are, `for b in t.bytes`. Other
@@ -524,7 +659,9 @@ operation or call. `&&` and `||` evaluate their right operand only when needed.
   right, before the array is stored; an element may read the array being
   assigned.
 - **[ORD-4]** `[value; N]` evaluates `value` exactly once, also when `N` is 0,
-  and copies it into every element.
+  and copies it into every element. *(decision 0020)* For a type that moves,
+  this is a written form of copying: `value` moves into it, and the other
+  elements are copies, which the tools report ([OWN-2]).
 - **[ORD-5]** A struct literal evaluates its field values in the order they
   are **written**, not the order the fields are declared, each completely,
   before the struct value exists. A trap, or a `?` that returns, in one field
@@ -922,7 +1059,10 @@ Rejected with a diagnostic, never ignored: `when`, named fields in enum
 variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
 patterns (`..`) and field shorthand in patterns, destructuring declarations
 (`P { x: a } := p`), user-defined generics, traits, closures, function
-values, method calls (other than the operations of a `Console`, [CON-2]),
+values, method calls (other than the operations of a `Console`, [CON-2],
+and `.copy()`, [OWN-6]), `inout` parameters, destructors and owned
+resources (decision 0020, TASK-20260926-042), an implicit copy of a struct
+or of an enum with data (decision 0020, [OWN-1]),
 loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating a `mut` array or text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),

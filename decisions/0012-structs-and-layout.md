@@ -36,6 +36,11 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
    passing, returning and storing. There is no aliasing. Fields are read from
    any struct value (`make().x`, `a[i].x`, `s.a.b`) and assigned only through
    a `mut` local variable (`v.f.g = value`); parameters stay immutable.
+   *(Changed on 2026-09-29 by decision 0020, from the author's decision on
+   Q3 of 2026-09-26 and the provisional ownership surface R-7: a struct
+   moves on declaration, assignment, passing to a `take` parameter,
+   returning and storing, and is copied only by `x.copy()`; a parameter
+   without `take` borrows its argument. There is still no aliasing.)*
 3. **Nothing implicit.** No equality or ordering operators, no methods, no
    generics, no patterns for structs (a `match` on a struct is an error), no C
    ABI. A struct value is never discarded silently. *(Patterns: changed by
@@ -116,7 +121,8 @@ x86 Linux, where the System V i386 ABI aligns 64-bit integers to 4 bytes.
 - A C interoperation design (an explicit C-layout annotation and passing
   structs across the boundary by value or by pointer).
 - Ownership and moves (milestone 0.2): measured cost of copying large structs
-  may favour moves or borrows of structs.
+  may favour moves or borrows of structs. *(Done by decision 0020: structs
+  move, and copy only explicitly.)*
 - Generics and traits: generic structs, derived equality, methods.
 - Patterns: destructuring structs in `match` and declarations.
 - Layout optimizations (field reordering, niche tags for `Option`), allowed

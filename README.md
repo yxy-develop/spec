@@ -6,7 +6,7 @@ experimental and changes through recorded decisions until 1.0.
 | File | Content |
 |---|---|
 | `syntax.md` | Lexical structure, newline rules, grammar (EBNF), operators |
-| `semantics.md` | Types, structs, enums with data, declarations, constants, borrows, borrowed text, cells, `match` and its patterns, loops, evaluation, integer rules, floating point, effects, the console capability, the C boundary, a glossary |
+| `semantics.md` | Types, structs, enums with data, declarations, constants, borrows, borrowed text, ownership (moves and the explicit copy), cells, `match` and its patterns, loops, evaluation, integer rules, floating point, effects, the console capability, the C boundary, a glossary |
 | `modules.md` | Packages, modules, imports, visibility, manifest and lock — experimental; packages of one module, dependencies from directories and Git origins, the lock and fetching implemented; the package service not yet |
 | `decisions/NNNN-*.md` | Language decisions, with their state and register ID, context, alternatives and what could change them |
 | `decisions/OPEN.md` | Open questions with the provisional choice in force |
@@ -27,7 +27,7 @@ experimental e muda por decisões registradas até a versão 1.0.
 
 - `syntax.md`: léxico, regras de quebra de linha, gramática e operadores.
 - `semantics.md`: tipos, structs, enums com dados, declarações, constantes,
-  empréstimos, texto emprestado, células (`@ctrl <- @eval -> @effect/@out`),
+  empréstimos, texto emprestado, posse (moves e a cópia explícita), células (`@ctrl <- @eval -> @effect/@out`),
   `match` e seus padrões, laços, avaliação, aritmética inteira, ponto
   flutuante, efeitos, a capacidade de console, fronteira com C e um glossário.
 - `modules.md`: pacotes, módulos, imports, visibilidade, manifesto e lock
