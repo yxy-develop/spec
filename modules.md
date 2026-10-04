@@ -354,15 +354,18 @@ effects {}
   ([EFF-5]). The trap report of a hosted program ([TRAP-1]) belongs to the
   hosted runtime in every layer; a freestanding profile gives a `core`
   program its own (OPEN #41).
-- **[STD-8]** *(experimental, decision 0022)* The packages of the standard
-  library in this version are `core/ascii` (ASCII bytes: classification,
-  case, digit value), `alloc` (`AllocError`, the error of the `try_`
-  operations of [ALLOC-3]; nothing of it allocates) and `std/print`
-  (writing through a `Console` the caller passes). `Console` stays a prelude
-  name ([PRG-2]) and is of the `std` layer ([STD-5]). The place of the
-  owned heap types (`alloc/string`, `alloc/list`, `alloc/boxed`) and the
-  shape of their operations are in decision 0022, part 5; they are not in
-  this version.
+- **[STD-8]** *(experimental, decisions 0022 and 0023)* The packages of the
+  standard library in this version are `core/ascii` (ASCII bytes:
+  classification, case, digit value), `core/utf8` (UTF-8 text: validation of
+  bytes, boundaries, parts and code points, `semantics.md` [TEXT-11]–
+  [TEXT-13]), `alloc` (`AllocError`, the error of the `try_` operations of
+  [ALLOC-3]; nothing of it allocates), `alloc/string` (the owned string,
+  `semantics.md` [STR-1]–[STR-5], the first package that allocates) and
+  `std/print` (writing through a `Console` the caller passes). `Console`
+  stays a prelude name ([PRG-2]) and is of the `std` layer ([STD-5]). The
+  place of the other owned heap types (`alloc/list`, `alloc/boxed`) and the
+  shape of their operations are in decision 0022, part 5; they wait for
+  generics (OPEN #5).
 
 ## 5. Nothing runs at import or resolution
 
