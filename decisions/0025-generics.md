@@ -2,8 +2,9 @@
 
 - Status: Experimental — not accepted. Written under step 1 of
   TASK-20260926-047 of the master plan (Phase 8), for the author's review;
-  step 2 implements it (part 11). Every choice below is the orchestrator's,
-  with the alternatives that follow; none is the author's.
+  step 2 implements it (part 11), and did on 2026-10-04 (part 13, with its
+  deviations). Every choice below is the orchestrator's, with the
+  alternatives that follow; none is the author's.
 - Date: 2026-10-04
 - Origin: `decisions/OPEN.md` #5 (enum payloads, generics, traits; the part
   on payloads was closed by decision 0017); the master plan's row of
@@ -18,7 +19,7 @@
   amends the table of §2, [TY-1], [TY-3], [STRUCT-1], [ENUM-1], [OWN-1],
   [EFF-3], [EFF-5], [DROP-1], [DROP-5], [ABI-2], [GR-1], §12 and the
   grammar of `syntax.md` (part 9). No text of `semantics.md` or
-  `syntax.md` changes before step 2.
+  `syntax.md` changed before step 2; step 2 wrote it (2026-10-04).
 - Author requirements it follows: E-1 (no new effect), E-2 (part 6), P-2
   (dynamic dispatch, instantiations and their sizes in the facts, part 8),
   P-3 (the measurements compare equivalent contracts and keep measured,
@@ -467,6 +468,64 @@ value; E0111
 functions, structs and enums); E0206 (not callable) narrows (a function
 named without a call is a function value where a value is expected; calling
 a variable that is not of function type keeps E0206).
+
+### 13. Step 2 as implemented (2026-10-04)
+
+Step 2 of TASK-20260926-047 implements parts 1–9 and 12 in the compiler
+(its `docs/implementation/STATUS.md`, R1280–R1294), with the text of
+`semantics.md` §2.3 and the amendments of part 9 in this repository, and
+the gate of part 11 met. Where it departs from the text above, or chooses
+what the text left open:
+
+- **Monomorphization on the typed program, before the MIR** (part 11, row
+  5 says "in the MIR"). The checker's typed program (HIR) is
+  monomorphized: each instantiation is the generic function's body with
+  its type arguments substituted, made once per distinct list of type
+  arguments from the functions that are not generic, then built into MIR,
+  analyzed and compiled as any function. The generic form's MIR is still
+  built and analyzed, so the analyses of moves, destruction and views run
+  on it, once, as [GEN-5] asks; an instantiation's destruction plan is
+  computed from its own MIR, at the places the generic form's analysis
+  found (the same exits, the same order). Nothing observable differs from
+  substitution in the MIR: the code, the facts and the diagnostics are
+  those part 3 describes. Reason: the MIR is built from typed expressions
+  and its builder, the layout and the code generator then needed no
+  knowledge of type parameters beyond an instantiation's concrete types.
+- **One check site per operation of a generic body**, shared by all its
+  instantiations: a trap names the operation's site whatever the
+  instantiation that fails it, and the facts list the check in every
+  instantiation's `runtime_checks` with that site.
+- **Symbols**: an instantiation's code is `yxy.<package>.<name><A;B>`, its
+  type arguments printed without blanks or commas (`Pair<u8;bool>`, a
+  function type `fn(P1;take:P2)->R!e1+e2`), deterministic and internal.
+- **A function value of another shape**: a function named where a value of
+  a function type of a different shape is expected is the type mismatch
+  E0300, as any value of the wrong type (part 12 narrows E0206 to this
+  case without naming the code); a generic function whose instantiation
+  the expected type does not determine is E0391.
+- **The count of [GEN-9]** counts the instantiations of functions and the
+  instantiated types that hold no type parameter; E0394 is reported at the
+  first request beyond the depth, with the chain in notes. The tables of
+  instantiated types also stop growing at 2^20 entries, a guard against a
+  runaway program the count refuses long before.
+- **The positive twins of E-2** (part 11, [GEN-8]) are not in `run/` or
+  `pass/`: each is its refusal with only the effect declared, written by
+  the test `twins_of_the_refusals_of_e2_declare_the_effect_and_check`
+  (compiler, `compiler/tests/generics.rs`), which checks it on every target
+  (a `pass/` file would have duplicated the corpus that pins the layers of
+  the library).
+- **B5's Yxy columns**: with no constraints, generic code reaches a type's
+  operation only through a function value, so the static column passes
+  each type's `apply` to its instantiation of `run` as a value, and is
+  static because clang resolves that call in each instantiation (read in
+  the disassembly); the dynamic column calls through a value from a table,
+  with no barrier like `black_box`, so at one type its call is resolved
+  too. Measured on one host (`benchmarks/results/README.md`, "B5 results,
+  step 2"): a dynamic call costs 25–28% more instructions per call than a
+  static one (the proxies' range), and each added type costs 1.75 ms of
+  build time with static dispatch against 0.46 ms with function values —
+  within the proxies' range, so nothing here asks to revisit the bounds or
+  the default (see "What could change it").
 
 ## Alternatives
 
