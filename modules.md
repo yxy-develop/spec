@@ -329,9 +329,40 @@ effects {}
   list of names known to the compiler: it is not a package, and neither the
   standard library nor a dependency can extend it.
 - **[STD-4]** No module outside the toolchain may declare a path under a
-  reserved root, and no replacement may target one ([MAN-4]). The standard
-  library does not exist yet, so every standard import is an error in this
-  version.
+  reserved root, and no replacement may target one ([MAN-4]). *(decision
+  0022)* An import of a standard path that names no package of the standard
+  library is an error. (Before decision 0022 the library did not exist, and
+  every standard import was an error.)
+- **[STD-5]** *(experimental, decision 0022)* Nothing declares a layer. The
+  **layer of a package** of the standard library is the root of its path.
+  The layer of another package is the highest layer among the packages it
+  imports, directly or not, and `std` when one of its functions has a
+  parameter or variable of type `Console` (the capability of the hosted
+  runtime, [CON-1]); otherwise it is `core`. The layers are ordered
+  `core` < `alloc` < `std`.
+- **[STD-6]** *(experimental, decision 0022)* The **layer of a program** is
+  the highest layer of its packages: its main package and every package it
+  imports, directly or not. Tools report the layer of the program and of
+  each package.
+- **[STD-7]** *(experimental, decision 0022)* A layer says what the Yxy code
+  of a package may need: a `core` package allocates nothing ([ALLOC-1]) and
+  uses no operating-system service of the library; an `alloc` package may
+  allocate through the allocator the program supplies; a `std` package may
+  use the capabilities the hosted runtime gives to `main`. Foreign code
+  reached through `ffi` is outside the layer: it may allocate or call the
+  operating system whatever the layer of the package that declares it
+  ([EFF-5]). The trap report of a hosted program ([TRAP-1]) belongs to the
+  hosted runtime in every layer; a freestanding profile gives a `core`
+  program its own (OPEN #41).
+- **[STD-8]** *(experimental, decision 0022)* The packages of the standard
+  library in this version are `core/ascii` (ASCII bytes: classification,
+  case, digit value), `alloc` (`AllocError`, the error of the `try_`
+  operations of [ALLOC-3]; nothing of it allocates) and `std/print`
+  (writing through a `Console` the caller passes). `Console` stays a prelude
+  name ([PRG-2]) and is of the `std` layer ([STD-5]). The place of the
+  owned heap types (`alloc/string`, `alloc/list`, `alloc/boxed`) and the
+  shape of their operations are in decision 0022, part 5; they are not in
+  this version.
 
 ## 5. Nothing runs at import or resolution
 
@@ -699,16 +730,18 @@ path_char = "a"…"z" | "0"…"9" | "-" | "." | "_" | "/" ;
 ### Implementation status
 
 The status of each rule, with its tests, is in the compiler repository
-(`docs/implementation/STATUS.md`, requirements R92–R109 and R200–R216, and
-implementation decisions 0006, 0007, 0008 and 0011). In short, as of
-2026-09-29:
+(`docs/implementation/STATUS.md`, requirements R92–R109, R200–R216 and
+R1170–R1183, and implementation decisions 0006, 0007, 0008 and 0011). In short, as of
+2026-09-30:
 
 - **Implemented** for packages of one module: [MIG-1] (the clause is
   `package`; `module` is rejected with a mechanical fix; [MIG-2] is past),
   [PKG-1]–[PKG-8] (with the file names and links of [PKG-1] and [PKG-2]),
   [MOD-1], [MOD-3], [MAN-7] (this toolchain implements language 0.1), [IMP-1]–[IMP-11],
   [IMP-13], [IMP-14], [VIS-1]–[VIS-5], [VIS-7], [VIS-8], [PATH-1]–[PATH-5],
-  [STD-1], [STD-3], [STD-4], [INIT-1], the grammar of §9, and the tooling
+  [STD-1], [STD-3], [STD-4], [STD-5]–[STD-8] (decision 0022: the library of
+  [STD-8] is built into the compiler, and a program's layer and each
+  package's are in `yxy inspect --json`), [INIT-1], the grammar of §9, and the tooling
   part of [VIS-6] (facts say whether a package declares foreign functions).
   The provisional field rule of OPEN #28 is implemented: fields are private
   to their package unless declared `pub`.
@@ -746,7 +779,10 @@ implementation decisions 0006, 0007, 0008 and 0011). In short, as of
   declarations of [VIS-6]); [VER-6] (a downgrade by editing the requirement
   and running `yxy lock`; no `update <path>@<older>`); [NET-5] (the lock is
   the reference; no checksum log). [MOD-4]: no workspaces.
-- **Not implemented**: §8 (targets of the build list), [STD-2], the package
+- **Partly**: [STD-2]: the library's packages follow the layering (a test
+  of the compiler checks their imports), but there are no freestanding
+  profiles.
+- **Not implemented**: §8 (targets of the build list), the package
   service, and the `--dry-run` of [DEP-3].
 
 Outside this draft, for later designs: the package service and its protocol;
