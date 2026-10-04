@@ -5,13 +5,15 @@
   in the control repository, `plans/decisions/README.md`), from the study of
   TASK-20260926-040; it is reviewed by the author at the gate of 0.2, with
   the choices of the study's first step that this decision relies on
-  (below).
-- Date: 2026-09-29
+  (below). Part 4 is TASK-20260926-042's, under the same status.
+- Date: 2026-09-29; part 4 (`inout`, views and exclusive borrows),
+  2026-09-30
 - Origin: the author's decision on Q3 (2026-09-26): a struct **moves by
   default**, a copy is **explicit**, and the choice is never made by
   physical size; the provisional surface R-7 (2026-09-29); tasks
   TASK-20260926-040 (the study) and TASK-20260926-078 (this part).
-- Spec: `semantics.md` §4.2 [OWN-1]–[OWN-8]; [TY-1], [TY-6], [REF-5],
+- Spec: `semantics.md` §4.2 [OWN-1]–[OWN-10]; §4 [REF-1], [REF-2],
+  [REF-6], [REF-7]; [LOOP-4]; [TY-1], [TY-6], [REF-5],
   [STRUCT-6], [STRUCT-9], [ENUM-3], [DECL-1], [LOOP-4], [ORD-4], §12;
   `syntax.md` §3 (`param`, `postfix`), [GR-1], §4; decision 0012 item 2.
 
@@ -54,11 +56,11 @@ experimental.
 
 | Question | Choice | What it means | Where it is normative |
 |---|---|---|---|
-| Ownership surface | **(C)** | values with a single owner; a parameter borrows its argument, `inout` borrows it exclusively, `take` receives it; the views `&[T]`, `&mut [T]` and `&str` stay second class, with a lexical duration; no reference types for structs, no lifetimes written | this decision, for what the language has today (part 2); `inout`, `&mut [T]`, views with a lexical duration and the exclusivity of borrows: TASK-20260926-042 |
+| Ownership surface | **(C)** | values with a single owner; a parameter borrows its argument, `inout` borrows it exclusively, `take` receives it; the views `&[T]`, `&mut [T]` and `&str` stay second class, with a lexical duration; no reference types for structs, no lifetimes written | this decision, for what the language has today (part 2); `inout`, `&mut [T]`, views with a lexical duration and the exclusivity of borrows: part 4 (TASK-20260926-042) |
 | Explicit copy | **S1**, `e.copy()` | a postfix operation; `copy` stays usable as a name (study: 0 fields named `copy` in the suite, 7 uses of `copy` as a local that S2 and S3 would break) | now, [OWN-6] |
 | Copyable class | **K0** | no struct and no enum with data copies implicitly; `Option` and `Result` copy only when every type argument copies (the step-1 choice 7 below) | now, [OWN-1] |
 | Arrays | **R2** | a whole array is copied only explicitly, `a.copy()`; `b := a` stays refused; an array is never moved as a whole | now, [TY-6], [OWN-6] |
-| Unwinding at the C boundary | **U1** | an unwind that reaches a Yxy frame from foreign code aborts the process there, with a trap report | with destructors, TASK-20260926-042 (OPEN #45) |
+| Unwinding at the C boundary | **U1** | an unwind that reaches a Yxy frame from foreign code aborts the process there, with a trap report | part 4 item 4 and decision 0021 (no destructor runs); the report: OPEN #45 |
 | Allocation | **(d)** | the layers `core`, `alloc` and `std`; allocation is what `alloc` gives, not an effect or an allocator argument | TASK-20260926-044 |
 | Running out of memory | **O2** | the simple form of an allocating operation aborts; a `try_` family returns `Result` | TASK-20260926-044 (and TASK-20260926-043 for the owned string) |
 
@@ -186,6 +188,84 @@ Three choices are this task's, under R-7, and are reviewed with the others:
   binding into storage of its own, written or reported) accepts every
   program valid today.
 
+### 4. `inout`, views and exclusive borrows (TASK-20260926-042, 2026-09-30)
+
+The part of the direction that part 2 left for TASK-20260926-042, rules C2,
+C3, C4 and C7 of (C) and B5 of the study, is normative now; destructors,
+their order and their effects are decision 0021.
+
+1. **`inout` parameters** ([OWN-9]): `inout p: T` borrows the caller's place
+   exclusively for the call; the function reads and assigns `p` and its
+   parts, and passes them on as `inout`, but never moves `p` or a part out.
+   `T` holds a value (an integer, a float, `bool`, an enum, a struct, an
+   `Option` or a `Result`); a view, text, a capability or an array is not
+   `inout`. The argument is written `inout place`, where the place is a
+   `mut` variable, an `inout` parameter, or an element or a field of one,
+   or an element of a view `&mut [T]` (a parameter or a variable declared
+   with `&mut a`), and holds its value ([OWN-4]). `inout` is marked at the call as `take`
+   is not (MV0 keeps moves unmarked): the call may change the caller's
+   place, which a reader of the call sees. `inout` is a word only before a
+   parameter's name and before an argument that starts with a name. It
+   does not cross the C boundary ([ABI-2]). The parameter is the caller's
+   place, not a copy of it: nothing is copied in or out.
+2. **Exclusivity** ([OWN-10]): an `inout` argument, until the call returns,
+   and a view `&mut a`, while it lives, are the only access to their place:
+   no read, assignment, move or other borrow of the place or of a place
+   that overlaps it (two fields of one struct do not overlap; two elements
+   of one array always do, whatever their indices), and no exclusive borrow
+   of a place while another borrow of an overlapping place lives. The
+   analysis of moves checks it on the MIR, with no check at run time.
+3. **Views of arrays** ([REF-1], [REF-6], [REF-7]): `&a` of any array local,
+   `mut` or not, is a view `&[T]`; `&mut a` of a `mut` array is a view
+   `&mut [T]` whose elements may be assigned (`s[i] = v`). A view given to
+   a call lives until the call returns; a view held in a variable, until
+   the end of the block that declares the variable; the array a `for`
+   iterates, until the loop ends ([LOOP-4]: a `mut` array is iterated by
+   element too). While a view `&a` lives, the array is **frozen**: not
+   assigned, moved, lent `inout` or viewed with `&mut`. A variable of type
+   `&mut [T]` is declared with `&mut a` only, and a view is never a result,
+   a field, a value of a variant or inside another type ([REF-2]).
+4. **Unwinding at the C boundary: U1.** An unwind that reaches a Yxy frame
+   from foreign code ends the process there, and runs no destructor (B4,
+   decision 0021 item 3). Of the two routes of the study (§8: a landing pad
+   at every call of an `extern` function, or the Yxy personality routine
+   writing the report during the unwinder's search phase), neither is
+   chosen by this part: the report ([TRAP-1], a stable code, the site of
+   the `extern` call) is future work of the compiler, which keeps ending
+   the process as [ABI-3] (c) describes (OPEN #45).
+5. **Running out of memory: O2** has nothing to act on before
+   TASK-20260926-044 (no allocation exists).
+
+Six choices are TASK-20260926-042's, under R-7, reviewed with the others:
+
+- **An `inout` argument is also a use of its place**: lending a moved place
+  is the error of a use after a move ([OWN-4]).
+- **A copy-type argument read before an `inout` argument of the same place
+  is valid** (`rd(n, inout n)`: `n` is copied when it is evaluated, and
+  nothing borrows it after), while a read after it is not
+  (`rd2(inout n, n)`, [OWN-10]); for a move type the earlier argument
+  borrows the place until the call returns, and the later `inout` is an
+  error.
+- **A variable of type `&mut [T]` is declared with `&mut a`**, never with
+  another view: two exclusive views of one array would otherwise live
+  together.
+- **A view variable lives until the end of its block**, not until its last
+  use (C7 of the study, lexical duration); a shorter duration accepts more
+  programs and can come later.
+- **An element of a view `&mut [T]` is a place for `inout`** (`bump(inout
+  s[i])`, item 1): the view is the only access to its array while it lives,
+  so lending one of its elements exclusively for a call is as safe as
+  lending an element of the `mut` array itself, and two elements of one
+  view in one call overlap ([OWN-10]) as two elements of one array do.
+  *(Recorded 2026-10-04, from the review of TASK-20260926-042: the
+  compiler accepted the form before the text listed it.)*
+- **A view is never a result** (item 3). Rule C6 of (C) (`options.md` §4)
+  allows a function to return a view derived from exactly one of its
+  parameters, which lives as that parameter's argument does; it is not
+  adopted by this part, and is deferred: adopting it later only accepts
+  more programs. *(Recorded 2026-10-04, from the review of
+  TASK-20260926-042.)*
+
 ## Alternatives
 
 - **(A), the Rust family** (references `&T` and `&mut T` in types, with
@@ -218,6 +298,20 @@ Three choices are this task's, under R-7, and are reviewed with the others:
   lacked.
 - **Maybe-moved allowed with a flag at run time** (drop flags): a hidden
   cost and a hidden state; an error keeps the program's meaning in its text.
+- **`inout` as copy-in, copy-out** (the parameter a copy, written back
+  when the call returns): the same results for valid programs under
+  [OWN-10], at the cost of two copies the program did not write (M-2);
+  the parameter is the place instead.
+- **`inout` unmarked at the call** (as `take`): the study measured the
+  marked form (C3); a call that may change a place of the caller says so.
+- **The two-phase exclusive borrow** (the study's alternative to B8): an
+  `inout` argument would be borrowed only once every argument is evaluated,
+  so that `set(inout p, p.copy())` and `f(inout n, n)` would be valid. Not
+  adopted: the rule of [OWN-7] (an argument is borrowed when it is
+  evaluated) stays one rule for every argument; the alternative accepts
+  more programs and can come later.
+- **`&mut` of structs and other values** (a reference type): (C) has none;
+  a function that changes a value of its caller takes it `inout`.
 - **Snapshots kept for arguments** (the meaning before this decision): an
   argument copied when a later argument changes the place is a copy the
   program did not write; [OWN-7] refuses the program instead, and the fix
@@ -226,11 +320,12 @@ Three choices are this task's, under R-7, and are reviewed with the others:
 ## What could change it
 
 - The author's review at the gate of 0.2: every choice of part 1, the
-  choices of part 3, and the three choices of this task.
-- TASK-20260926-042 (MIR-1): `inout`, `&mut [T]`, the exclusivity of
-  borrows beyond arguments and `match` bindings (a place changed while a
-  view of it lives), destructors and their order, U1, and the
-  generalization of these rules to the types with an owner.
+  choices of part 3, and the six choices of part 4.
+- TASK-20260926-042 (MIR-1) wrote part 4 and decision 0021; the report
+  of U1 at the boundary is the compiler's next step there (OPEN #45).
+- Programs that a view with a duration shorter than its block, the
+  two-phase exclusive borrow, or a view returned from one parameter (C6)
+  would accept: each only accepts more programs.
 - TASK-20260926-043 and -044: the owned string, whose copy is deep and
   allocates (`.copy()` then allocates, under (d) and O2), and the layers.
 - K1, if programs show many copies of small structs that a marker would
