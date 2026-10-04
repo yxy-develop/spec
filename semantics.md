@@ -33,12 +33,12 @@ compiler's diagnostic codes are listed in the compiler repository
 | `()` | the single unit value `()` | anywhere; a function without `-> T` returns `()` |
 | `E` (an `enum`) | one of its variants, written `E.Variant`, or `E.Variant(v, …)` with the values the variant holds (§2.2) | anywhere except the C boundary ([ABI-2]) |
 | `S` (a `struct`) | a value for each of its fields (§2.1) | anywhere except the C boundary ([ABI-2]) |
-| `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type |
-| `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
+| `Option<T>` | `None` or `Some(v)` | anywhere; `T` is a value type; *(decision 0023)* or text, where text may go ([TEXT-10]) |
+| `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types; *(decision 0023)* or text, where text may go ([TEXT-10]) |
 | `[T; N]` | exactly `N` elements (`N` a constant expression, [CONST-5]) | local variables only, created from a literal (`[a, b]` or `[v; N]`) or as the explicit copy of another (`a.copy()`, decision 0020) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
 | `&mut [T]` | a view of the elements of a `mut` array that may assign them *(experimental, decision 0020, TASK-042 part; [REF-6])* | parameters, and local variables declared with `&mut a` |
-| `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
+| `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]), and in an `Option` or a `Result` there ([TEXT-10]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
 - **[TY-1]** *Value types* are `bool`, the integers, the floats *(decision
@@ -353,47 +353,119 @@ compiler's diagnostic codes are listed in the compiler repository
   ([OWN-10]): any other use of the array is an error. The analysis is on
   the program's text and flow; nothing is checked at run time.
 
-### 4.1 Text *(experimental, decision 0015)*
+### 4.1 Text *(experimental, decisions 0015 and 0023)*
 
-Only borrowed text exists in this version; the owned string waits for
-ownership (`decisions/OPEN.md` #6, #7). Bytes (`&[u8]`), text (`&str`) and
-the owned string are distinct types, with no implicit conversion between
-them.
+Bytes (`&[u8]`), borrowed text (`&str`) and the owned string
+(`string.String` of the standard library's `alloc/string`, §4.4) are
+distinct types, with no implicit conversion between them (M-3). Text has
+three units, and every operation says which one it counts: bytes, code
+points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
 
 - **[TEXT-1]** A string literal ([LEX-18]) has type `&str`: a read-only view
-  of the UTF-8 encoding of its characters, which lives for the whole
-  execution (constant data of the program). No text is copied or allocated
-  in this version.
+  of the UTF-8 encoding of its code points, which lives for the whole
+  execution (constant data of the program). *(decision 0023)* Other text
+  views the bytes of an owned string, of validated bytes or of other text
+  ([TEXT-8]); nothing copies text but the functions of `alloc/string`
+  ([STR-5]).
 - **[TEXT-2]** Every `&str` value is valid UTF-8: literals are checked when
-  they are read ([LEX-18]), and no operation of this version makes text from
-  other bytes. A conversion of `&[u8]` to text, validated, returning a
-  `Result` and never trapping, is future work (OPEN #7).
+  they are read ([LEX-18]); *(decision 0023)* bytes become text only through
+  `utf8.from_bytes`, which checks them ([TEXT-11]), and an owned string is
+  made only from text ([STR-1]). No operation available to a program makes
+  text from bytes it has not checked.
 - **[TEXT-3]** `t.len` is the number of **bytes** of the text `t`, of type
   `usize`, for any expression `t` of type `&str`: `"a\u{E7}\u{E3}o".len`
-  (`ação`) is 6. No operation of this version counts code points or grapheme
-  clusters, and no text operation is named after characters without its
-  unit.
+  (`ação`) is 6. Code points are counted only by an explicit operation
+  ([TEXT-13]).
 - **[TEXT-4]** `t.bytes` is a `&[u8]` over the same bytes; nothing is copied.
   It follows the rules of slices ([REF-2]–[REF-4]): to index it, name it
-  first (`b := t.bytes`, then `b[i]`).
+  first (`b := t.bytes`, then `b[i]`). *(decision 0023)*
+  `utf8.byte_at(t: &str, i: usize) -> Option<u8>` (package `core/utf8`) is
+  the byte of `t` at byte offset `i`, or `None` when `i` is not below
+  `t.len`; it never traps.
 - **[TEXT-5]** `a == b` and `a != b` compare two texts byte by byte: they are
   equal when they have the same length and the same bytes. There is no
   normalization: `"e\u{301}"` (3 bytes) is not equal to `"\u{E9}"` (2
   bytes). Text has no ordering.
 - **[TEXT-6]** Text may be a parameter, a local variable (also `mut`,
-  assigned other text), the result of a function and the value of a `match`.
-  It cannot be stored in arrays, `Option`, `Result` or struct fields, and does
-  not cross the C boundary ([ABI-2]). A function may return text because
-  every `&str` of this version views constant data, also text it received
-  as a parameter (unlike a slice, [REF-2]); when text that views other data
-  exists, returning it follows the ownership rules, which must keep such
-  programs valid (OPEN #6, decision 0015).
+  assigned other text, [TEXT-9]), the result of a function and the value of
+  a `match`; *(decision 0023)* an `Option` or a `Result` may hold it
+  ([TEXT-10]). It is never stored in arrays, struct fields or the data of a
+  variant, and does not cross the C boundary ([ABI-2]). A function may
+  return text that views constant data or a parameter it borrows, also text
+  it received as a parameter (`fn f(s: &str) -> &str { return s }`), unlike
+  a slice ([REF-2]) ([TEXT-9]).
 - **[TEXT-7]** Not in this version, each rejected with its own diagnostic:
-  concatenation (`+`), indexing (`t[i]`), ordering (`<`), the owned string
-  (`String`), `str` without `&`, `&mut str`, `char` and character literals,
-  formatting (formatting functions, format strings, `print` with several
-  arguments), sub-slices, fields and methods of text other than `.len` and
-  `.bytes`, and `match` on text.
+  concatenation (`+`; *decision 0023:* `string.push` appends to an owned
+  string), indexing (`t[i]`), ordering (`<`), `str` without `&`, `&mut
+  str`, `char` and character literals, formatting (formatting functions,
+  format strings, `print` with several arguments), sub-slices `t[i..j]`
+  (a part of text is `utf8.slice`, [TEXT-12]), fields and methods of text
+  other than `.len` and `.bytes`, and `match` on text. `String` where the
+  program declares no type of that name is refused with a note that names
+  `string.String` ([STR-1]).
+- **[TEXT-8]** *(experimental, decision 0023)* *(views and their sources)*
+  A value that holds text, or a slice, **views** the bytes of some locals of
+  its function, its **sources**, derived from the expression with no
+  lifetime written: a string literal views none, and neither does a
+  parameter (its caller keeps what it lent, [OWN-3]); `&a` views `a`; a
+  place of a type that moves given to a parameter without `take` views its
+  local (for a binding of a `match` on a place, the subject's local,
+  [OWN-5]; for a parameter without `take` or `inout`, none); `t.bytes`,
+  `Some(t)`, `Ok(t)`, `Err(t)` and `t?` view what `t` views, a `match` what
+  the values of its arms view, a binding what its subject views; the result
+  of a call that holds text views what its arguments view, but those of
+  `take` parameters. An element of a view `&mut [T]` (or a part of one)
+  views that view, also when it is a parameter: the view is the only access
+  to its array while it lives ([REF-6]), so text that views an element
+  through it **freezes the view** — no element is assigned or lent `inout`
+  through it, and it is not given to a call, while the text lives — and
+  text that views an array a live `&mut` view borrows is an error
+  ([OWN-10]). A view lives, as views of arrays do ([REF-7]): held by
+  a variable, until the end of the block that declares it; given to a call,
+  until the call returns; the subject of a `match`, while its arms run; the
+  left operand of `==` or `!=`, until the right one is computed; the slice a
+  `for` iterates, until the loop ends. While a view lives, its sources are
+  frozen: assigning one, moving it, lending it `inout` or viewing it with
+  `&mut` is an error. Nothing is checked at run time.
+- **[TEXT-9]** *(experimental, decision 0023)* *(views do not outlive their
+  sources)* A function returns — as its result, the error of `require` or
+  the error `?` gives back — only text that views no local of its own, a
+  `take` parameter or an `inout` parameter: constant data, or the
+  parameters it borrows. A variable holds only views of what its
+  declaration viewed: assigning it text that views another source is an
+  error (declare a new variable).
+- **[TEXT-10]** *(experimental, decision 0023)* An `Option` or a `Result`
+  may hold text (`Result<&str, utf8.Utf8Error>`) where text may go
+  ([TEXT-6]); it views what its text views ([TEXT-8]).
+- **[TEXT-11]** *(experimental, decision 0023)* *(bytes to text)*
+  `utf8.from_bytes(b: &[u8]) -> Result<&str, utf8.Utf8Error>` (package
+  `core/utf8`) gives `Ok` with text that views the same bytes when they are
+  UTF-8 (RFC 3629, Table 3-7 of Unicode), and otherwise `Err`:
+  `Invalid(i)` when the sequence that starts at byte `i` is not UTF-8 (a
+  byte that starts none, an overlong form, a surrogate, a value above
+  U+10FFFF, a sequence cut by a byte that does not continue it),
+  `Truncated(i)` when the bytes end inside a sequence valid so far. It never
+  traps.
+- **[TEXT-12]** *(experimental, decision 0023)* *(boundaries and parts)* A
+  **boundary** of text is an offset where a code point starts, or its
+  length. `utf8.slice(t, start, end) -> Result<&str, utf8.SliceError>` is
+  the part of `t` from byte `start` to byte `end`, which views the same
+  bytes, or `Err(OutOfRange)` when `start > end` or `end > t.len`, or
+  `Err(NotBoundary)` when either is not a boundary; it never traps.
+  `utf8.is_boundary(t, i)` tests an offset and `utf8.next_boundary(t, i)`
+  gives the next boundary after `i` (`t.len` past the end).
+- **[TEXT-13]** *(experimental, decision 0023)* *(code points)* Code points
+  are reached only through explicit operations of `core/utf8`:
+  `count_code_points(t)`, the number of code points, `code_point_at(t, i)`,
+  the code point whose encoding starts at byte `i` as a `u32`, or `None`, and
+  `next_boundary`. There is no `char` type.
+- **[TEXT-14]** *(experimental, decision 0023)* *(grapheme clusters)* Not in
+  this version. When offered, they are the extended grapheme clusters of UAX
+  #29 of the Unicode version the package states (16.0.0 for the first), in
+  a package of the `core` layer of their own (`core/grapheme`).
+- **[TEXT-15]** *(experimental, decision 0023)* *(units)* No operation is
+  named after characters or says "character" without its unit: names say
+  bytes (`.len`, every offset), code points or grapheme clusters.
 
 ### 4.2 Ownership *(experimental, decision 0020)*
 
@@ -484,8 +556,10 @@ come with allocation (TASK-20260926-043, -044).
   types of [OWN-1], all of whose parts copy in this version: structs, enums
   with data, `Option` and `Result` that hold one, and arrays (a whole array,
   copied element by element, [TY-6]); `.copy()` of a value of a copy type
-  is an error. A copy costs the size of the value, which the tools report.
-  A field named `copy` stays a field (`p.copy` reads it), and
+  is an error. *(decision 0023)* `.copy()` of an owned string is deep:
+  it calls `string.copy` ([STR-4]). A copy costs the size of the value,
+  which the tools report. A field named `copy` stays a field (`p.copy`
+  reads it), and
   `pkg.copy()` is the function `copy` of an import ([IMP-5]: a variable and
   an import never share a name).
 - **[OWN-7]** *(arguments are lent)* A place given to a parameter without
@@ -513,8 +587,9 @@ come with allocation (TASK-20260926-043, -044).
   parameter `inout p: T` **borrows the caller's place exclusively** for the
   call: the function reads and assigns `p` and its parts and passes them on
   as `inout`, but never moves `p` or a part of it out ([OWN-5]). `T` holds a
-  value: an integer, a float, `bool`, an enum, a struct, an `Option` or a
-  `Result` (a view, text, a capability or an array is an error). The
+  value: an integer, a float, `bool`, an enum, a struct, or an `Option` or
+  a `Result` of those (a view, text, a capability or an array is an error;
+  an `Option` or a `Result` that holds text counts as text, [TEXT-10]). The
   argument is written **`inout place`**, where the place is a `mut`
   variable, an `inout` parameter, or an element or a field of one ([STRUCT-5],
   [DECL-2]), or an element of a view `&mut [T]` ([REF-6]); it is a use of
@@ -584,7 +659,8 @@ and never by a trap.
   ([ABI-3] (c)).
 - **[DROP-4]** *(no copy, whole values)* A value whose type has a destructor
   is never copied: `.copy()` ([OWN-6]) and `[v; N]` ([ORD-4]) of one are
-  errors, since the copy and the value would both be destroyed. A part of a
+  errors, since the copy and the value would both be destroyed; *(decision
+  0023)* but `.copy()` of an owned string, which is deep ([STR-4]). A part of a
   struct that has a destructor never moves out alone: the destructor reads
   the whole value; a struct without one gives a part away ([OWN-4]).
 - **[DROP-5]** *(effects, E-2)* The effects of a destructor are effects of
@@ -610,6 +686,35 @@ and never by a trap.
   path ([DROP-3]). The place stays moved for its uses ([OWN-4]), and an
   exit after the place was given a new value since the move is an error:
   the moved value would be held by nothing.
+
+### 4.4 The owned string *(experimental, decision 0023)*
+
+- **[STR-1]** `String`, of the package `alloc/string` (written
+  `string.String` where it is imported), is owned UTF-8 text on the heap: a
+  struct of the library whose fields are private, with a destructor that
+  frees its bytes. It moves and is destroyed by its owner on every exit
+  ([OWN-2], [DROP-3]). It is made only from text, so it holds UTF-8.
+- **[STR-2]** Its operations are functions of `alloc/string`: `new()` (no
+  allocation), `with_capacity(n)`, `from(t)` (room for exactly `t`),
+  `push(inout s, t)`, `copy(s)` and their `try_` forms; `len(s)` (bytes),
+  `capacity(s)`, and `as_str(s)`, the text of `s`, a view ([TEXT-8]). When
+  `push` needs room, the new block is twice as large, at least 8 bytes and
+  at least the new length.
+- **[STR-3]** *(out of memory, [ALLOC-3])* A plain form traps with
+  *allocation failed* in `alloc/string` when the allocator has no memory or
+  the size does not fit (above the largest `isize` of the target); its
+  `try_` form returns `Err(alloc.AllocError.OutOfMemory)` or
+  `Err(alloc.AllocError.CapacityOverflow)` instead, never traps, and leaves
+  its `inout` string as it was.
+- **[STR-4]** *(copies)* `s.copy()` of a `String` is `string.copy(s)`: a
+  deep copy that allocates its own bytes and traps like a plain form. A
+  value that holds a `String` is not copied ([DROP-4]).
+- **[STR-5]** *(nothing implicit, P-2)* No operator or conversion allocates
+  or copies text: every allocation is a call of a function of
+  `alloc/string` (`.copy()` included), and the tools report which functions
+  and calls may allocate and where the library asks for memory. The hosted
+  runtime's allocator is the C library's `malloc`, `realloc` and `free`
+  ([ABI-3] (a)).
 
 ## 5. Functions and cells
 
@@ -1086,10 +1191,9 @@ stream, the effect that a write may happen.
 
 The layers of the standard library are in `modules.md` [STD-2] and
 [STD-5]–[STD-8]; the owned heap types, with the place and the shape of their
-operations, in decision 0022, part 5. No operation of this version
-allocates: these rules are the policy that the owned string, the list and
-the box follow when they come, with the destructors of decision 0021 and
-the owned text of TASK-20260926-043.
+operations, in decision 0022, part 5. *(decision 0023)* The owned string
+(§4.4) is the first type that allocates; the list and the box wait for
+generics (OPEN #5).
 
 - **[ALLOC-1]** Allocation is what the `alloc` layer gives: only the
   operations of the packages of `alloc` (and those of `std` that use them)
@@ -1109,7 +1213,8 @@ the owned text of TASK-20260926-043.
   form returns `Result<T, alloc.AllocError>` — `Err(OutOfMemory)` or
   `Err(CapacityOverflow)` — never traps for lack of memory, and on failure
   leaves its `inout` operands as they were. `.copy()` of an owned heap
-  value, and `[v; N]` of one, trap like a plain form.
+  value traps like a plain form; *(decision 0023)* `[v; N]` of one is
+  refused, as for every value with a destructor ([DROP-4], [STR-4]).
 - **[ALLOC-4]** No abort is hidden behind an operation presented as
   recoverable (M-4 of the control repository's register): every public
   function of `alloc` and `std` that can trap says so in its documentation,
@@ -1142,7 +1247,8 @@ the owned text of TASK-20260926-043.
 - **[ABI-3]** Reserved symbols, the same on every target ([TGT-2]), including
   a target that never uses a given name:
   - (a) the symbols of the hosted runtime — `main`, `write`, `_exit`,
-    `getenv` —, names starting with `yxy_rt_`, and names starting with `__`
+    `getenv`, and *(decision 0023)* the allocator's `malloc`, `realloc` and
+    `free` —, names starting with `yxy_rt_`, and names starting with `__`
     (reserved for the C implementation, such as the stack probe
     `__chkstk_darwin` and the arithmetic helpers of 32-bit targets) cannot be
     `extern` or `export` symbols;
@@ -1230,8 +1336,8 @@ variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
 patterns (`..`) and field shorthand in patterns, destructuring declarations
 (`P { x: a } := p`), user-defined generics, traits, closures, function
 values, method calls (other than the operations of a `Console`, [CON-2],
-and `.copy()`, [OWN-6]), owned resources (decision 0020,
-TASK-20260926-043, -044), an implicit copy of a struct
+and `.copy()`, [OWN-6]), owned resources other than the owned string
+(decision 0023), an implicit copy of a struct
 or of an enum with data (decision 0020, [OWN-1]), `inout` on a parameter
 that holds no value or at the C boundary, `&mut` of anything but a `mut`
 array, a view stored or returned, destructors of enums, a destructor
@@ -1244,9 +1350,11 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
-owned strings, lists and boxes, and every operation that allocates
-(decision 0022: their place and the shape of their operations, [ALLOC-1]–
-[ALLOC-4]), characters, the text operations of [TEXT-7], the float
+lists and boxes (decision 0022: their place and the shape of their
+operations, [ALLOC-1]–[ALLOC-4]), a copy of a value that holds an owned
+string ([STR-4]), grapheme clusters ([TEXT-14]), a `char` type and
+character literals ([TEXT-13], [LEX-11]), the text
+operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
 types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 128-bit integers, concurrency (`par`,
