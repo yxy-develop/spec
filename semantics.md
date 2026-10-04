@@ -517,7 +517,8 @@ come with allocation (TASK-20260926-043, -044).
   `Result` (a view, text, a capability or an array is an error). The
   argument is written **`inout place`**, where the place is a `mut`
   variable, an `inout` parameter, or an element or a field of one ([STRUCT-5],
-  [DECL-2]); it is a use of the place, which must hold its value ([OWN-4]).
+  [DECL-2]), or an element of a view `&mut [T]` ([REF-6]); it is a use of
+  the place, which must hold its value ([OWN-4]).
   An argument of an `inout` parameter without `inout`, `inout` before any
   other argument, and `inout` before an operand that is not a place are
   errors. The parameter is the caller's place: what the function assigns is
@@ -572,9 +573,10 @@ and never by a trap.
   the last parameter first; the old value of an assigned place (a
   variable, a field, an element), after the new value is computed and
   before it is stored; the new value of `_ := e`, at once (a place, `_ :=
-  p`, keeps its value, [OWN-2]). A place that moved is not destroyed; of a
-  place that moved a part (a field, a value of a variant bound by a
-  `match`), the other parts are. A value moved on some of the paths that
+  p`, keeps its value, [OWN-2]). A place that moved is not destroyed (but
+  one moved into an expression that an exit leaves before taking it,
+  [DROP-6]); of a place that moved a part (a field, a value of a variant
+  bound by a `match`), the other parts are. A value moved on some of the paths that
   reach its destruction only is an error: nothing records at run time
   whether it moved ([OWN-4]); a value of a variant the place cannot hold on
   a path (the other arms of a `match`) is not there to destroy. A trap
@@ -594,11 +596,20 @@ and never by a trap.
   ([OWN-2]) or is discarded with `_ :=`; in a position that does not own it
   (the argument of a parameter without `take`, the struct of a field read,
   the subject of a `match`) it is an error: declare it first. An exit that
-  may leave an expression while a value with a destructor that the
-  expression made is not yet in its owner (an earlier argument of a call
-  that has not run, a field of a literal being built) is an error: a `?`,
-  or a `return`, `break`, `continue` or false `require` in a block of a
-  `match` arm inside the expression.
+  may leave an expression (a `?`, or a `return`, `break`, `continue` or
+  false `require` in a block of a `match` arm inside the expression) while
+  a value with a destructor that the expression made or that was moved
+  into it is not yet in its owner (an earlier argument of a call that has
+  not run, a field of a literal being built) is decided by where that
+  value is. A value the expression made is in no place: the exit is an
+  error. A place moved into the expression (an argument of a `take`
+  parameter, a field of a struct literal, an element of an array literal,
+  a value of a variant) gives its value when the expression takes it (the
+  call runs, the value is built); an exit before that leaves the value in
+  the place, whose owner destroys it where it destroys its values on that
+  path ([DROP-3]). The place stays moved for its uses ([OWN-4]), and an
+  exit after the place was given a new value since the move is an error:
+  the moved value would be held by nothing.
 
 ## 5. Functions and cells
 

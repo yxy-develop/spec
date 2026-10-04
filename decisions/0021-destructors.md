@@ -82,13 +82,35 @@ string and the other owned types will be built on the same one.
    ([OWN-2]), or is discarded with `_ :=`. In a position that does not own
    it (the argument of a parameter without `take`, the struct of a field
    read, the subject of a `match`) it is an error, fixed by declaring it
-   first. An exit that may leave an expression while a value with a
-   destructor that it made waits for its owner (an earlier argument of a
-   call that has not run, a field of a literal being built) is an error:
-   a `?`, or a `return`, `break`, `continue` or false `require` in a block
-   of a `match` arm inside the expression. So every destruction is the end
-   of an owner's scope, an assignment or `_ :=`, and no destruction needs
-   a flag or a hidden temporary.
+   first. An exit that may leave an expression (a `?`, or a `return`,
+   `break`, `continue` or false `require` in a block of a `match` arm
+   inside the expression) while a value with a destructor that the
+   expression made or that was moved into it waits for its owner (an
+   earlier argument of a call that has not run, a field of a literal being
+   built) is decided by where that value is:
+   - a value the expression **made** is in no place: the exit is an error,
+     fixed by declaring the value first;
+   - a place **moved into** the expression (an argument of a `take`
+     parameter, a field of a struct literal, an element of an array
+     literal, a value of a variant) gives its value when the expression
+     takes it: when the call runs, when the value is built. An exit before
+     that leaves the value in the place, and the place's owner destroys it
+     where it destroys its values on that path ([DROP-3]), in its order.
+     The place stays moved for its uses ([OWN-4]): a use after such an
+     exit is a use after a move, and a destruction that some paths reach
+     with the value kept and others with it moved is an error, as for any
+     value moved on some paths only. A place given a new value between
+     the move and the exit (in a `match` arm of a later operand) no longer
+     holds the moved value, which would be held by nothing: that exit is
+     an error.
+
+   So every value made or moved into an expression is destroyed exactly
+   once on every exit, every destruction is the end of an owner's scope,
+   an assignment or `_ :=`, and no destruction needs a flag or a hidden
+   temporary. *(Amended 2026-10-04 by the review of
+   TASK-20260926-042: the first text spoke only of the values the
+   expression made, and a place moved into it was destroyed by no one on
+   such an exit.)*
 7. **What is not destroyed at run time is not guessed**: the compiler
    decides every destruction from the flow of the function (the analysis
    of moves), the same on every target; the facts of `yxy inspect` list
@@ -118,6 +140,17 @@ string and the other owned types will be built on the same one.
   of hidden temporaries with their own order of destruction; declaring the
   value first costs one line and states the order. Allowing it later
   accepts more programs.
+- **Refusing an exit while a place moved into the expression waits** (the
+  error of item 6 for moved places too, as for the values the expression
+  made): the place still holds the value until the expression takes it,
+  since nothing reads a moved place again and a move hands the value over
+  only when the call runs or the literal is stored, so its owner can
+  destroy it with no flag and no hidden temporary, in the order of
+  [DROP-3]. Refusing would make the common `pair(g, fails(n)?)` declare
+  the later operand first for no gain in clarity, while a value the
+  expression made has no place to stay in and is still refused. The
+  place stays moved for its uses, so the analysis of moves of every
+  expression that completes is unchanged.
 - **Unwinding through Yxy frames, running destructors**: rejected by the
   study (§8) and by R-7 (U1): a trap and a foreign unwind end the process
   and run no destructor.

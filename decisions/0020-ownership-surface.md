@@ -201,7 +201,8 @@ their order and their effects are decision 0021.
    `Option` or a `Result`); a view, text, a capability or an array is not
    `inout`. The argument is written `inout place`, where the place is a
    `mut` variable, an `inout` parameter, or an element or a field of one,
-   and holds its value ([OWN-4]). `inout` is marked at the call as `take`
+   or an element of a view `&mut [T]` (a parameter or a variable declared
+   with `&mut a`), and holds its value ([OWN-4]). `inout` is marked at the call as `take`
    is not (MV0 keeps moves unmarked): the call may change the caller's
    place, which a reader of the call sees. `inout` is a word only before a
    parameter's name and before an argument that starts with a name. It
@@ -235,7 +236,7 @@ their order and their effects are decision 0021.
 5. **Running out of memory: O2** has nothing to act on before
    TASK-20260926-044 (no allocation exists).
 
-Four choices are TASK-20260926-042's, under R-7, reviewed with the others:
+Six choices are TASK-20260926-042's, under R-7, reviewed with the others:
 
 - **An `inout` argument is also a use of its place**: lending a moved place
   is the error of a use after a move ([OWN-4]).
@@ -251,6 +252,19 @@ Four choices are TASK-20260926-042's, under R-7, reviewed with the others:
 - **A view variable lives until the end of its block**, not until its last
   use (C7 of the study, lexical duration); a shorter duration accepts more
   programs and can come later.
+- **An element of a view `&mut [T]` is a place for `inout`** (`bump(inout
+  s[i])`, item 1): the view is the only access to its array while it lives,
+  so lending one of its elements exclusively for a call is as safe as
+  lending an element of the `mut` array itself, and two elements of one
+  view in one call overlap ([OWN-10]) as two elements of one array do.
+  *(Recorded 2026-10-04, from the review of TASK-20260926-042: the
+  compiler accepted the form before the text listed it.)*
+- **A view is never a result** (item 3). Rule C6 of (C) (`options.md` §4)
+  allows a function to return a view derived from exactly one of its
+  parameters, which lives as that parameter's argument does; it is not
+  adopted by this part, and is deferred: adopting it later only accepts
+  more programs. *(Recorded 2026-10-04, from the review of
+  TASK-20260926-042.)*
 
 ## Alternatives
 
@@ -306,12 +320,12 @@ Four choices are TASK-20260926-042's, under R-7, reviewed with the others:
 ## What could change it
 
 - The author's review at the gate of 0.2: every choice of part 1, the
-  choices of part 3, and the three choices of this task.
+  choices of part 3, and the six choices of part 4.
 - TASK-20260926-042 (MIR-1) wrote part 4 and decision 0021; the report
   of U1 at the boundary is the compiler's next step there (OPEN #45).
-- Programs that a view with a duration shorter than its block, or the
-  two-phase exclusive borrow, would accept: both only accept more
-  programs.
+- Programs that a view with a duration shorter than its block, the
+  two-phase exclusive borrow, or a view returned from one parameter (C6)
+  would accept: each only accepts more programs.
 - TASK-20260926-043 and -044: the owned string, whose copy is deep and
   allocates (`.copy()` then allocates, under (d) and O2), and the layers.
 - K1, if programs show many copies of small structs that a marker would
