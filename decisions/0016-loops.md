@@ -3,8 +3,9 @@
 - Status: Experimental — plans/decisions/README.md, L-0016
   (proposed with task TASK-20260926-033 of the master plan of 2026-09-26,
   Phase 5; open to the author's review; the type of a range of literals (item
-  3) is reviewed by the author at the gate of 0.1)
-- Date: 2026-09-28
+  3) was reviewed by the author at the gate of 0.1, who changed it: see the
+  amendment of 2026-10-04 below)
+- Date: 2026-09-28; amended 2026-10-04
 - Spec: `syntax.md` [LEX-5], [LEX-6], [NL-8], [GR-6], [GR-8], §3 (`loop`,
   `for`, `break`, `continue`); `semantics.md` [TY-4], [DECL-3], [FN-2],
   [FN-3], [CELL-2], [LOOP-1]–[LOOP-7], §12; `OPEN.md` #47, #49
@@ -49,7 +50,7 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
    for i in 1..=n { … }             // 1, 2, …, n
    for i: u64 in 0..10 { … }        // the variable's type written
    for x in s { … }                 // each element of a slice or named array
-   for _ in 0..3 { … }              // three times, no variable
+   for _: usize in 0..3 { … }       // three times, no variable (amended)
    break                            // leave the innermost loop
    continue                         // next iteration of the innermost loop
    ```
@@ -74,7 +75,8 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
    have one integer type, taken from each other, as the operands of `+`
    ([TY-4]), or from the annotation of the variable; when neither gives one
    (`0..10`), the type is `usize`, the type of a position ([REF-4]), which
-   [TY-4] now says. The type errors that this `usize` causes (a use of the
+   [TY-4] now says. *(Superseded by the amendment of 2026-10-04: such a
+   range is an error, E0303, whose mechanical fix writes `: usize`.)* The type errors that this `usize` causes (a use of the
    variable where another integer type is expected, a literal that does not
    fit) say where the `usize` comes from, and offer to write the type after
    the variable when the other type is known. The author reviews this
@@ -113,7 +115,7 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
 
    Without labels, the loop a `break` leaves is found in the text, so the
    rule is exact about the loop a `break` leaves; it is conservative about
-   ranges and conditions (`for _ in 0..3 { return 1 }` and
+   ranges and conditions (`for _: usize in 0..3 { return 1 }` and
    `while !false { return 1 }` never reach their end, and still count as
    going on). It is checked on the typed program, where the three engines
    (native at `-O0`, `-O2` and the reference evaluator) read it.
@@ -200,6 +202,35 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   conditions, and the MIR-0 verifier checks it on the graph (compiler
   implementation decision 0013).
 
+## Amendment (2026-10-04): a range of literals needs its type
+
+The author's answer to the gate of 0.1 (2026-10-04, item L-0016 A1 of the
+gate's request; TASK-20261004-081) chose the alternative "an error asking for
+a type" over the `usize` of item 3:
+
+- A range whose bounds give no type and whose variable has none written
+  (`for i in 0..10`, `for _ in 0..3`, `for i in -3..3`) is an error, E0303
+  ("cannot infer the integer type of this range"), as `x := 0` is
+  ([TY-4], [LOOP-3]). It carries the mechanical fix that writes `: usize`
+  after the variable or `_` (`for i: usize in 0..10`), which gives a program
+  the meaning that the same source had before this amendment. When the body
+  uses the variable where another integer type `T` is expected, the fix is
+  the suggestion `: T` instead, since with `usize` that use would stay an
+  error.
+- Ranges with a typed bound (`0..n`, `0..a.len`, `0..N` with a constant `N`)
+  or a written type (`for i: u8 in 0..10`) are unchanged.
+- Why: nothing implicit (M-2), the same source means the same on 32- and
+  64-bit targets ([TGT-2]: the review's probe
+  `for i in 0..100000 { n = n + widen(i * i) }`, which never writes `usize`,
+  ran on a 64-bit target and trapped on i686), and floats have no default
+  type either ([FLT-2]). The cost is `: usize` in the first loop people
+  write, which the fix writes for them. Changing it before the opening of
+  the language needs no new language version (OPEN #48); adding a default
+  later would only accept more programs.
+- The example `for _ in 0..3 { … }` of item 1 now writes `for _: usize in
+  0..3 { … }`; the text of item 3 and of the alternative "The type of
+  `0..10`" above is kept as it was decided, with this section in force.
+
 ## What could change it
 
 - The MIR-0 and its verifier (master plan, Phase 6): a disagreement between
@@ -209,7 +240,9 @@ build `for` on, and slices only view immutable arrays ([REF-1]).
   borrow rule instead of immutability.
 - Programs that need labels or `break` with a value often enough; the
   measurements of `for` against `while` in the benchmarks.
-- The author's review, at the gate of 0.1, of the type of an unannotated
-  range of literals (`usize`, or E0303 with a mechanical fix).
+- *(Done, 2026-10-04: E0303 with a mechanical fix, the amendment above.)*
+  Programs in which writing the type of a range of literals costs more than
+  it says, which a default could serve (adding one only accepts more
+  programs).
 - Programs that need `break` or `continue` in the condition of `while` or
   the head of `for` (refused in this version).
