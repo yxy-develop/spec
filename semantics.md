@@ -60,9 +60,11 @@ compiler's diagnostic codes are listed in the compiler repository
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
-  context, it is an error. *(decision 0016)* The bounds of a range in `for`
-  have `usize` as their context when neither bound nor the loop variable
-  gives them a type ([LOOP-3]). A literal that does not fit its type is an error;
+  context, it is an error. *(decision 0016, amendment of 2026-10-04)* So are
+  the bounds of a range in `for` when neither bound nor the loop variable
+  gives them a type: `for i in 0..10` is an error, whose mechanical fix
+  writes `for i: usize in 0..10` ([LOOP-3]). *(Before the amendment such a
+  range was of `usize`.)* A literal that does not fit its type is an error;
   a `-` directly applied to a literal is part of the literal, so
   `x: i8 := -128` is valid. *(experimental, decision 0019)* A float literal
   ([LEX-19]) takes the float type expected by its context in the same way;
@@ -211,7 +213,8 @@ compiler's diagnostic codes are listed in the compiler repository
   `mut name := value` declares a mutable one. `name: T := value` and
   `mut name: T := value` add a type annotation. `_ := value` evaluates and
   discards a value; *(decision 0020)* `_ := p` of a place moves nothing
-  ([OWN-2]). `let` and `var` do not exist.
+  ([OWN-2]). `let` and `var` do not declare: they are reserved words
+  ([LEX-6], [LEX-7]).
 - **[DECL-2]** `place = value` assigns. The place is a `mut` local variable, an
   element `a[i]` of a `mut` array, or a field `v.f` (at any depth) of a `mut`
   struct variable ([STRUCT-5]). Slices are read-only and cannot be reassigned.
@@ -841,7 +844,12 @@ and never by a trap.
   excluded, and is empty when `a ≥ b`; `a..=b` includes `b` and is empty when
   `a > b`. Both bounds have the same integer type, which each takes from the
   other ([TY-4]) or from the type of the variable (`for i: u8 in 0..n`);
-  when neither gives one, the type is `usize`. `a` and then `b` are evaluated
+  when neither gives one (a range of literals, `0..10`) it is an error, with
+  the mechanical fix that writes the type `usize` after the variable or `_`
+  (`for i: usize in 0..10`) *(decision 0016, amendment of 2026-10-04; before,
+  such a range was of `usize`)*: there is no default integer type ([TY-4]),
+  and the same source means the same on 32- and 64-bit targets ([TGT-2]).
+  `a` and then `b` are evaluated
   once, before the first iteration; assigning a variable that a bound read
   does not change the iterations. Iterating never overflows and never traps:
   after its last value the loop ends without computing another, so

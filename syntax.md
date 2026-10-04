@@ -38,15 +38,21 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   decision 0016, and `const` since decision 0018; they were reserved words
   before.)*
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `async await
-  defer dyn impl module par self static trait type unsafe use when where
-  yield`. `module` is rejected with a mechanical fix
+  defer dyn impl let module par self static trait type unsafe use var when
+  where yield`. `module` is rejected with a mechanical fix
   to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
-  reserved (`modules.md` [IMP-6]). The compiler's conformance suite copies the
+  reserved (`modules.md` [IMP-6]); `let` and `var` are rejected with a note
+  pointing to `:=` instead ([LEX-7]). The compiler's conformance suite copies the
   lists of [LEX-5] and [LEX-6] word for word and compares them with the
   lexer's: a change to either list is made in the specification, in the lexer
   and in that test together.
-- **[LEX-7]** `let` and `var` are identifiers, but a statement that starts with
-  `let name` or `var name` is rejected with a note pointing to `:=`.
+- **[LEX-7]** *(decision 0002, amendment of 2026-10-04)* `let` and `var` are
+  reserved words ([LEX-6]), never names: using either as a name is an error
+  with a note pointing to `:=`, and a statement that starts with `let name`
+  or `var name` is rejected with the same note and, when the rest is a
+  declaration, a mechanical fix to `:=` (`let x: u8 = 1` becomes
+  `x: u8 := 1`, `var` becomes `mut`). *(Before the amendment they were
+  identifiers, and only such a statement was rejected.)*
 - **[LEX-8]** Conventions: `snake_case` for functions, variables and packages;
   `PascalCase` for types and variants. They are documented, not enforced.
   Import path elements are lowercase, which is enforced (`modules.md`
