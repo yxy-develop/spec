@@ -37,6 +37,7 @@ compiler's diagnostic codes are listed in the compiler repository
 | `Result<T, E>` | `Ok(v)` or `Err(e)` | anywhere; `T`, `E` are value types |
 | `[T; N]` | exactly `N` elements (`N` a constant expression, [CONST-5]) | local variables only, created from a literal (`[a, b]` or `[v; N]`) or as the explicit copy of another (`a.copy()`, decision 0020) |
 | `&[T]` | a read-only view of an array's elements | parameters and local variables only |
+| `&mut [T]` | a view of the elements of a `mut` array that may assign them *(experimental, decision 0020, TASK-042 part; [REF-6])* | parameters, and local variables declared with `&mut a` |
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 
@@ -302,12 +303,14 @@ compiler's diagnostic codes are listed in the compiler repository
 
 ## 4. Borrows
 
-- **[REF-1]** `&a`, where `a` is an **immutable** array local, produces a slice
-  `&[T]` over its elements. Borrowing a `mut` array, a scalar or a slice is an
-  error. Because the borrowed array is immutable, a slice never observes a
-  mutation. `for x in a` iterates `&a` and requires the same ([LOOP-4]).
-- **[REF-2]** References cannot escape: no function returns a slice, and slices
-  cannot be stored in arrays, `Option` or `Result`. A slice parameter or local
+- **[REF-1]** `&a`, where `a` is an array local, produces a slice `&[T]` over
+  its elements *(decision 0020, TASK-042 part: also of a `mut` array; before,
+  only an immutable one)*. Borrowing a scalar, a slice or a view is an error.
+  The array does not change while the slice lives ([REF-7]), so a slice never
+  observes a mutation. `for x in a` iterates `&a` ([LOOP-4]).
+- **[REF-2]** References cannot escape: no function returns a slice or a view
+  `&mut [T]`, and they cannot be stored in arrays, `Option`, `Result`, struct
+  fields or values of variants. A slice parameter or local
   therefore never outlives the array it views. This is a restriction of the
   subset, not a borrow checker; wider borrowing rules are future work. Text
   (`&str`, §4.1) views constant data, which outlives every function, so a
@@ -329,6 +332,26 @@ compiler's diagnostic codes are listed in the compiler repository
   `Result` that hold one, and arrays move ([OWN-1]); a use after a move is
   an error ([OWN-4]). *(Before decision 0020 every type was copied, and
   use-after-move could not occur.)*
+- **[REF-6]** *(experimental, decision 0020, TASK-042 part)* `&mut a`, where
+  `a` is a `mut` array local, produces a **view** `&mut [T]` of its
+  elements, which may be read (`s[i]`, `s.len`) and assigned (`s[i] = v`,
+  checked as [REF-4]); in this version `for` does not iterate it (iterate
+  its indices). `&mut [T]` is the type of a parameter, and of a variable
+  declared with `&mut a` (never with another view: two exclusive views of
+  one array would live together); a view variable is given to a parameter
+  `&mut [T]` as it is. It is never copied or moved, and follows [REF-2].
+  `&mut` of anything but a named `mut` array is an error: a function that
+  changes a value of its caller takes it `inout` ([OWN-9]).
+- **[REF-7]** *(experimental, decision 0020, TASK-042 part)* *(lexical
+  duration)* A view lives: given to a call (an argument `&a` or `&mut a`,
+  or a view variable given to a `&mut [T]` parameter), until the call
+  returns; held in a variable, until the end of the block that declares the
+  variable; the array a `for` iterates ([LOOP-4]), until the loop ends.
+  While a slice `&a` lives, the array is **frozen**: assigning it or an
+  element, moving it, lending it `inout` or viewing it with `&mut` is an
+  error. While a view `&mut a` lives it is the only access to the array
+  ([OWN-10]): any other use of the array is an error. The analysis is on
+  the program's text and flow; nothing is checked at run time.
 
 ### 4.1 Text *(experimental, decision 0015)*
 
@@ -378,8 +401,10 @@ A value has a single owner. A value of a copy type is copied where it is
 used; a value of a move type **moves**: the place it came from gives it
 away. Only `x.copy()` copies a value of a move type. The direction of this
 section is the ownership surface (C) of decision 0020 (values, `inout` and
-limited borrows); this version has its part without `inout`, views with a
-lifetime of their own or owned resources (TASK-20260926-042).
+limited borrows); *(TASK-042 part, 2026-09-30)* `inout` and the exclusive
+borrows are [OWN-9] and [OWN-10], views [REF-6] and [REF-7], and the
+destruction of values §4.3 (decision 0021); owned resources of the library
+come with allocation (TASK-20260926-043, -044).
 
 - **[OWN-1]** *(classes)* The **copy types** are `bool`, the integers, the
   floats, `()`, enums without data, `Option` and `Result` whose type
@@ -388,7 +413,8 @@ lifetime of their own or owned resources (TASK-20260926-042).
   struct, every enum with a variant that holds data, `Option` and `Result`
   with a move type as an argument, and every array. No struct and no enum
   with data is a copy type; which types move depends on their declaration
-  only ([OWN-8]).
+  only ([OWN-8]). *(TASK-042 part)* A view `&mut [T]` is neither: it is
+  never copied or moved ([REF-6]).
 - **[OWN-2]** *(moving uses)* A place ([REF-4], [STRUCT-4]: a variable, a
   field of a place, an element) of a move type **moves** when it is: the
   value of a declaration; the right side of an assignment (to a variable, a
@@ -483,6 +509,107 @@ lifetime of their own or owned resources (TASK-20260926-042).
   ([TGT-2]): a struct of one byte and one of 16 384 components move and
   copy alike. A move may be carried out by copying bytes; the tools report
   those copies with their size, and the explicit copies apart.
+- **[OWN-9]** *(experimental, decision 0020, TASK-042 part)* *(`inout`)* A
+  parameter `inout p: T` **borrows the caller's place exclusively** for the
+  call: the function reads and assigns `p` and its parts and passes them on
+  as `inout`, but never moves `p` or a part of it out ([OWN-5]). `T` holds a
+  value: an integer, a float, `bool`, an enum, a struct, an `Option` or a
+  `Result` (a view, text, a capability or an array is an error). The
+  argument is written **`inout place`**, where the place is a `mut`
+  variable, an `inout` parameter, or an element or a field of one ([STRUCT-5],
+  [DECL-2]), or an element of a view `&mut [T]` ([REF-6]); it is a use of
+  the place, which must hold its value ([OWN-4]).
+  An argument of an `inout` parameter without `inout`, `inout` before any
+  other argument, and `inout` before an operand that is not a place are
+  errors. The parameter is the caller's place: what the function assigns is
+  in that place when the call returns, and nothing is copied in or out.
+  `inout` is a word only before a parameter's name and before an argument
+  that starts with a name, so a name `inout` stays usable. An `extern` or
+  `export` function has no `inout` parameter ([ABI-2]).
+- **[OWN-10]** *(experimental, decision 0020, TASK-042 part)*
+  *(exclusivity)* An **exclusive borrow**, an `inout` argument until its
+  call returns or a view `&mut a` while it lives ([REF-7]), is the only
+  access to its place: a read, an assignment, a move or a borrow of that
+  place or of a place that overlaps it is an error, and so is an exclusive
+  borrow of a place while another borrow of an overlapping place lives (an
+  argument of a parameter without `take` or `inout`, [OWN-7]; a binding of
+  a `match`, [OWN-5]; a view, [REF-7]). Two fields of one struct do not
+  overlap; two elements of one array always do, whatever their indices. An
+  argument of a copy type evaluated before an `inout` argument of the same
+  place is a copy and borrows nothing (`f(n, inout n)` is valid); one
+  evaluated after it is a read of the borrowed place (`f(inout n, n)` is an
+  error).
+
+### 4.3 Destruction *(experimental, decision 0021)*
+
+A value whose type has a destructor is destroyed exactly once, by its
+owner, at a point of the program's text: never after a move, never twice,
+and never by a trap.
+
+- **[DROP-1]** *(destructors)* `drop fn name(v: S) effects { … } { … }`
+  declares the **destructor** of the struct `S`, which the same package
+  declares: one parameter of type `S`, without `take` or `inout` (the
+  destructor reads the value, [OWN-3]), no result, not `pub`, not `extern`
+  or `export`; at most one for each struct. It runs when a value of `S` is
+  destroyed and is never called by name. `drop` is a word only before `fn`
+  at the start of an item, so a name `drop` stays usable.
+- **[DROP-2]** *(types with a destructor)* A type **has a destructor** when
+  it is a struct with a destructor, or a struct, an enum with data, an
+  `Option`, a `Result` or an array that holds a value of such a type.
+  **Destroying** a value runs, for a struct, its destructor and then
+  destroys its fields in declaration order; for an enum with data, the
+  values of the variant it holds, in order; for `Some`, `Ok` or `Err`, the
+  payload; for an array, the elements, from the first to the last.
+  Destroying a value of any other type does nothing.
+- **[DROP-3]** *(when)* A value of a type that has a destructor is
+  destroyed by its owner: a variable at the end of the block that declares
+  it (the body of a function, a branch of `if`, the body of a loop at the
+  end of each iteration, a block of a `match` arm), the variables of a
+  block the last declared first, on every path that leaves the block — its
+  end, `return`, a false `require`, a `?` that returns, `break` and
+  `continue` — the blocks from the innermost outward, after the value that
+  leaves (the operand of `return`, the error) is computed; a `take`
+  parameter at the end of its function, after the variables of the body,
+  the last parameter first; the old value of an assigned place (a
+  variable, a field, an element), after the new value is computed and
+  before it is stored; the new value of `_ := e`, at once (a place, `_ :=
+  p`, keeps its value, [OWN-2]). A place that moved is not destroyed (but
+  one moved into an expression that an exit leaves before taking it,
+  [DROP-6]); of a place that moved a part (a field, a value of a variant
+  bound by a `match`), the other parts are. A value moved on some of the paths that
+  reach its destruction only is an error: nothing records at run time
+  whether it moved ([OWN-4]); a value of a variant the place cannot hold on
+  a path (the other arms of a `match`) is not there to destroy. A trap
+  destroys nothing ([TRAP-1]), and neither does an unwind from foreign code
+  ([ABI-3] (c)).
+- **[DROP-4]** *(no copy, whole values)* A value whose type has a destructor
+  is never copied: `.copy()` ([OWN-6]) and `[v; N]` ([ORD-4]) of one are
+  errors, since the copy and the value would both be destroyed. A part of a
+  struct that has a destructor never moves out alone: the destructor reads
+  the whole value; a struct without one gives a part away ([OWN-4]).
+- **[DROP-5]** *(effects, E-2)* The effects of a destructor are effects of
+  every function in which a value of its type, or of a type that holds it,
+  is destroyed: that function declares them, as for a call ([EFF-3]), and
+  its callers in turn.
+- **[DROP-6]** *(an owner for every value)* A new value of a type that has a
+  destructor (a call's result, a literal) is in a position that moves it
+  ([OWN-2]) or is discarded with `_ :=`; in a position that does not own it
+  (the argument of a parameter without `take`, the struct of a field read,
+  the subject of a `match`) it is an error: declare it first. An exit that
+  may leave an expression (a `?`, or a `return`, `break`, `continue` or
+  false `require` in a block of a `match` arm inside the expression) while
+  a value with a destructor that the expression made or that was moved
+  into it is not yet in its owner (an earlier argument of a call that has
+  not run, a field of a literal being built) is decided by where that
+  value is. A value the expression made is in no place: the exit is an
+  error. A place moved into the expression (an argument of a `take`
+  parameter, a field of a struct literal, an element of an array literal,
+  a value of a variant) gives its value when the expression takes it (the
+  call runs, the value is built); an exit before that leaves the value in
+  the place, whose owner destroys it where it destroys its values on that
+  path ([DROP-3]). The place stays moved for its uses ([OWN-4]), and an
+  exit after the place was given a new value since the move is an error:
+  the moved value would be held by nothing.
 
 ## 5. Functions and cells
 
@@ -580,8 +707,10 @@ lifetime of their own or owned resources (TASK-20260926-042).
   transactions and idempotence belong to explicit library contracts.
 - **[CELL-7]** `return` leaves the function. `when` (a cell that is skipped when
   its condition is false) is reserved and not supported yet.
-- **[CELL-8]** No value in this version owns a resource, so leaving a function
-  runs no cleanup code. Deterministic cleanup order is future work.
+- **[CELL-8]** *(decision 0021)* Leaving a function, or a block, destroys the
+  values its variables own, in the order of [DROP-3]; a value whose type has
+  no destructor ([DROP-2]) needs no code to be destroyed. A trap runs no
+  cleanup ([TRAP-1]). *(Before decision 0021 no value owned a resource.)*
 
 ### 5.1 Loops *(experimental, decision 0016)*
 
@@ -614,13 +743,15 @@ lifetime of their own or owned resources (TASK-20260926-042).
   `for i: u8 in 250..=255` runs six times.
 - **[LOOP-4]** `for x in s` iterates the elements of a slice `s` (a slice
   parameter or local, `&a`, `t.bytes`: any expression of type `&[T]`) or of
-  an array local named `s`, which is the same as `&s` and requires the same
-  ([REF-1]): an array that is not `mut`. The source is evaluated once; each
+  an array local named `s`, which is the same as `&s` ([REF-1]; *decision
+  0020, TASK-042 part:* also a `mut` array, which does not change while the
+  loop runs, [REF-7]). The source is evaluated once; each
   iteration binds `x` to the next element, from the first to the last: a
   copy of it for a copy type, and *(decision 0020)* a borrow of it, for one
-  iteration, for a type that moves ([OWN-5]). A slice views an immutable array, so nothing changes its elements or
-  its length while the loop runs, and iterating needs no check at run time.
-  A `mut` array is iterated by index (`for i in 0..a.len { … a[i] … }`).
+  iteration, for a type that moves ([OWN-5]). Nothing changes the elements
+  of a slice or its length while the loop runs ([REF-7]), and iterating
+  needs no check at run time. A loop that assigns the elements of a `mut`
+  array iterates it by index (`for i in 0..a.len { … a[i] = … }`).
   Text is not iterated ([TEXT-7]); its bytes are, `for b in t.bytes`. Other
   values (integers, `Option`, structs, an array that is not named) are not
   iterated.
@@ -706,7 +837,7 @@ hold in every build mode; there is no unchecked release mode.
 - **[TRAP-1]** A trap writes one report to standard error and ends the
   process with exit status **101**. The report names the kind of failure (the
   table of §6.2, a refused console write, [CON-4], *(decision 0019)* a
-  float-to-integer conversion out of range, [FLT-8], or *(decision 0021)* a
+  float-to-integer conversion out of range, [FLT-8], or *(decision 0022)* a
   failed allocation, [ALLOC-3], which no operation of this version makes)
   and the position of the
   checked operation,
@@ -864,7 +995,7 @@ Both operands have the same integer type, taken from them or from context.
   `Console` capability ([CON-3]). Other names are errors. The set will grow as
   the standard library appears. Which other concerns become effects is not
   settled: files, network, clock and randomness are candidates. Allocation
-  is not an effect *(experimental, decision 0021)*: it is what the `alloc`
+  is not an effect *(experimental, decision 0022)*: it is what the `alloc`
   layer gives ([ALLOC-1]). *(experimental)* The criterion of
   `decisions/OPEN.md` #9 (type, contract, effect or capability) is applied to
   each candidate.
@@ -951,13 +1082,14 @@ stream, the effect that a write may happen.
   gone, the operating system's default for SIGPIPE applies (it ends the
   process); a program does not change signal dispositions.
 
-### 7.2 Allocation and out of memory *(experimental, decision 0021)*
+### 7.2 Allocation and out of memory *(experimental, decision 0022)*
 
 The layers of the standard library are in `modules.md` [STD-2] and
 [STD-5]–[STD-8]; the owned heap types, with the place and the shape of their
-operations, in decision 0021, part 5. No operation of this version
+operations, in decision 0022, part 5. No operation of this version
 allocates: these rules are the policy that the owned string, the list and
-the box follow when they come (TASK-20260926-042 and -043).
+the box follow when they come, with the destructors of decision 0021 and
+the owned text of TASK-20260926-043.
 
 - **[ALLOC-1]** Allocation is what the `alloc` layer gives: only the
   operations of the packages of `alloc` (and those of `std` that use them)
@@ -1047,9 +1179,11 @@ the box follow when they come (TASK-20260926-042 and -043).
     exit that does not go through the unwinder (a `longjmp`, the end of a
     thread that does not unwind) is not detected; what it does, like an
     unwind that no Yxy frame refuses, is outside the guarantees of this
-    specification. Whether the end of the process should become a trap
-    report ([TRAP-1]), or unwinding a declared contract, is decided together
-    with destructors (`decisions/OPEN.md` #45).
+    specification. *(decision 0020, U1)* The end of the process there is to
+    become a trap report ([TRAP-1]): an unwind that reaches a Yxy frame from
+    foreign code aborts the process with a report, and never runs a
+    destructor ([DROP-3]); until the compiler writes that report, the
+    process ends as above (`decisions/OPEN.md` #45).
 
 ## 9. Targets
 
@@ -1096,26 +1230,29 @@ variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
 patterns (`..`) and field shorthand in patterns, destructuring declarations
 (`P { x: a } := p`), user-defined generics, traits, closures, function
 values, method calls (other than the operations of a `Console`, [CON-2],
-and `.copy()`, [OWN-6]), `inout` parameters, destructors and owned
-resources (decision 0020, TASK-20260926-042), an implicit copy of a struct
-or of an enum with data (decision 0020, [OWN-1]),
+and `.copy()`, [OWN-6]), owned resources (decision 0020,
+TASK-20260926-043, -044), an implicit copy of a struct
+or of an enum with data (decision 0020, [OWN-1]), `inout` on a parameter
+that holds no value or at the C boundary, `&mut` of anything but a `mut`
+array, a view stored or returned, destructors of enums, a destructor
+called by name, a copy of a value that has a destructor ([DROP-4]),
 loop labels, `break` with a value,
-ranges as values, ranges without a bound, iterating a `mut` array or text by
+ranges as values, ranges without a bound, iterating text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
-`unsafe`, `&mut`, references other than slices,
+`unsafe`, references other than slices and views,
 arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
 owned strings, lists and boxes, and every operation that allocates
-(decision 0021: their place and the shape of their operations, [ALLOC-1]–
+(decision 0022: their place and the shape of their operations, [ALLOC-1]–
 [ALLOC-4]), characters, the text operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
 types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, *(decision 0018)* constants inside
 a function, constants of types other than the integers and `bool`, calls in
-constant expressions other than `widen` (`const fn`), constants as patterns, generic enums, mutable slices, enums
+constant expressions other than `widen` (`const fn`), constants as patterns, generic enums, enums
 without variants and enums with more than 256 variants; for structs: generic
 structs, structs without fields, arrays and slices as fields, recursive
 structs, structs beyond [STRUCT-9], equality, methods, field

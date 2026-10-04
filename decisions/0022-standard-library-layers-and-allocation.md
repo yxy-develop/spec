@@ -1,4 +1,4 @@
-# Decision 0021: The layers of the standard library, allocation and out of memory
+# Decision 0022: The layers of the standard library, allocation and out of memory
 
 - Status: Accepted — **experimental**. It carries out two choices of the
   provisional surface the author authorized on 2026-09-29 (R-7 of the
@@ -45,8 +45,8 @@ recoverable form a name of its own, so that no API presented as recoverable
 hides an abort (M-4).
 
 What the language has today allocates nothing: there is no owned string, no
-list and no box. Their operations need destructors, `inout` and the owned
-text of TASK-20260926-042 and -043. This decision therefore makes the layers
+list and no box. Their operations need destructors (decision 0021),
+`inout` (decision 0020) and the owned text of TASK-20260926-043. This decision therefore makes the layers
 real and importable, decides how a program gets its layer, and fixes the
 policy of allocation and of running out of memory that those types will
 follow, with the place and the shape of their operations; the types
@@ -77,10 +77,15 @@ cannot be the name of a parameter of the file that imports it ([IMP-5]),
 and `console` is the name every printing function of the corpus gives its
 capability.
 
-The library's packages follow [STD-2]: `core/ascii` imports nothing, `alloc`
-imports only `core`, and `std/print` imports nothing. The compiler checks
-the rule over its sources, and that every one of them is in the
-canonical form of `yxy fmt`.
+The library's packages follow [STD-2]: a package of `core` may import only
+`core`, one of `alloc` only `core` and `alloc`, and one of `std` any layer.
+Today none of the three imports anything. The compiler checks the rule
+over its sources, so a new import is checked, and that every source is in
+the canonical form of `yxy fmt`.
+
+The library's code is compiled into the executables of the programs that
+import it; the reach of the project's license over that code is pending the
+author's A11 in the decision register of the control repository.
 
 ### 2. A program gets its layer from what it uses ([STD-5]–[STD-7])
 
@@ -90,7 +95,9 @@ the packages it imports, directly or not, and `std` when one of its
 functions has a `Console` parameter or variable; otherwise `core`
 ([STD-5]). The layer of a program is the highest layer of its packages
 ([STD-6]). The tools report both (`yxy inspect --json`: `layer`, and the
-`layer` of each package).
+`layer` of each package). The layer is read with `declares_foreign`: a
+program of the `core` layer that declares foreign functions may still
+allocate through them (below).
 
 A layer says what the Yxy code of the package may need ([STD-7]): a `core`
 package allocates nothing and uses no operating-system service of the
@@ -123,14 +130,17 @@ program valid today that stays under the ceiling it declares.
 - The hosted runtime supplies the allocator. A freestanding program that
   imports `alloc` supplies one; how is part of its profile (OPEN #41).
 - Freeing never fails. An owned heap value is freed when it is destroyed
-  (destructors: TASK-20260926-042).
+  (destructors: decision 0021).
 
 In this version no operation allocates: the package `alloc` holds only its
 error. The compiler's test is the gate of TASK-20260926-044: a `core`
-executable links with no allocation function of the C library, the C++
-runtime or the system (`nm -u`), nor do the `alloc` and `std` programs of
-the test, and their objects for every code-generating target refer to none;
-the same check finds `malloc` when a linked C file calls it.
+executable without foreign code (no `extern fn`, no file given with
+`--link` or `--lib`) links with no allocation function of the C library,
+the C++ runtime or the system (`nm -u`), nor do the `alloc` and `std`
+programs of the test, and their objects for every code-generating target
+refer to none; the same check finds `malloc` when a linked C file calls
+it. Foreign code is outside the layer (part 2), so the gate says nothing of
+a `core` program that declares foreign functions.
 
 ### 4. Out of memory: two families, O2 ([ALLOC-3], [ALLOC-4])
 
@@ -160,12 +170,18 @@ the same check finds `malloc` when a linked C file calls it.
   (its checks, the console's T0005, and those of what it calls) and checks
   them against its comment, and checks that a `try_` function returns
   `Result<…, alloc.AllocError>`.
+- In this version no operation allocates, so the part of M-4 about running
+  out of memory is met only vacuously: no function can reach T0007 and the
+  library has no `try_` function. That part moves to TASK-20260926-043,
+  whose owned string brings the first operations that allocate, with a test
+  of the trap and of the `Result`. The compiler reserves T0007 in a table
+  its tests check, so that no other trap takes the code.
 
 ### 5. Where the owned heap types go (declared, not implemented)
 
 | Package | Type | Plain form (traps, T0007) | `try_` form (`Result<…, alloc.AllocError>`) | Waits for |
 |---|---|---|---|---|
-| `alloc/string` | `String`, owned UTF-8 text (M-3) | `string.from(t: &str) -> String`; `string.push(inout s: String, t: &str)`; `string.with_capacity(n: usize) -> String` | `string.try_from(t: &str) -> Result<String, AllocError>`; `string.try_push(inout s: String, t: &str) -> Result<(), AllocError>`; `string.try_with_capacity(n: usize) -> Result<String, AllocError>` | destructors and `inout` (TASK-20260926-042), the owned text (TASK-20260926-043) |
+| `alloc/string` | `String`, owned UTF-8 text (M-3) | `string.from(t: &str) -> String`; `string.push(inout s: String, t: &str)`; `string.with_capacity(n: usize) -> String` | `string.try_from(t: &str) -> Result<String, AllocError>`; `string.try_push(inout s: String, t: &str) -> Result<(), AllocError>`; `string.try_with_capacity(n: usize) -> Result<String, AllocError>` | destructors (decision 0021) and `inout` (decision 0020), the owned text (TASK-20260926-043) |
 | `alloc/list` | `List<T>`, a growable sequence | `list.new() -> List<T>` (allocates nothing); `list.with_capacity(n: usize) -> List<T>`; `list.push(inout l: List<T>, take v: T)` | `list.try_with_capacity(n: usize)`; `list.try_push(inout l: List<T>, take v: T)`, whose error gives `v` back with the `AllocError` | the same, and a generic type of the library (OPEN #5) |
 | `alloc/boxed` | `Box<T>`, one owned value on the heap | `boxed.new(take v: T) -> Box<T>` | `boxed.try_new(take v: T)`, whose error gives `v` back with the `AllocError` | the same |
 
@@ -184,12 +200,12 @@ functions that write to the console have both a `Console` parameter and
 compiler's corpus — the examples, the run, pass, ABI and formatter
 programs, the benchmarks, the runnable module cases — and the standard
 library, each function counted once (the compiler's test
-`console_redundancy_of_direction_c_over_the_corpus`, 2026-09-30):
+`console_redundancy_of_direction_c_over_the_corpus`, 2026-10-04):
 
 | Measure | Count |
 |---|---|
-| Valid programs | 89 |
-| Functions | 470 |
+| Valid programs | 95 |
+| Functions | 530 |
 | With a `Console` parameter | 18 |
 | Declaring `console` | 18 |
 | Both | 18 |
@@ -199,6 +215,21 @@ library, each function counted once (the compiler's test
 | Passing their console to a function that takes one | 6 (3 of them without writing themselves) |
 | Declaring `console` with another effect (`ffi`) | 2 |
 | `main` taking the console | 8 |
+
+On 2026-09-30, before the programs of `inout`, views and destructors
+(decisions 0020 and 0021) joined the corpus, the measure had 89 programs
+and 470 functions, and every other count was the same.
+
+Of the 18 functions with a `Console` parameter, 10 come from the corpus as
+it stood before this decision, and 8 from code written for it, already in
+the convention: the 5 functions of `std/print`, the `main` of the test
+program of `layers.rs`, of `tests/run/std_layers.yxy` and of the module
+case `std_layers`. The 10 of the earlier corpus also hold the pair both
+ways. The test pins the two zeros of the table (a `Console` parameter
+without `console`, and `console` without a `Console` parameter) and the 8
+functions written for this decision, as measured on 2026-10-04. The
+language allows both cases, so the zeros are a property of the corpus: a
+program that adds one fails the test until the measure is taken again.
 
 In this corpus the pair still carries one bit: a function holds the
 capability if and only if it declares the effect, so every one of the 18
@@ -236,6 +267,15 @@ with this measure.
   #48), and the package's local name would collide with the parameter
   every such program calls `console` ([IMP-5]). The prelude type keeps the
   capability's type one that no program can redefine (decision 0015).
+- **The writing package named `std/console`, imported with an alias**
+  (`import "std/console" as out`, then `out.line(console, …)`): an alias
+  avoids the collision of [IMP-5], and the same alias works for
+  `std/print`, so the name `print` only moves the collision (a parameter
+  named `print` beside `import "std/print"` is E0202), and
+  `print.line(console, …)` beside `console.print(…)` uses `print` in two
+  roles. `std/print` was kept because a program that writes needs no alias
+  under the name every program of the corpus gives its console; the name
+  can still change before the library is stable.
 - **One package per layer** (`import "std"`, `import "core"`): a package
   grows with everything its layer holds, and a program imports all of it
   to use a part. Paths under each root, as other packages have, keep
@@ -250,8 +290,8 @@ with this measure.
 ## What could change it
 
 - The author's review at the gate of 0.2, with decision 0020.
-- TASK-20260926-042 and -043: destructors, `inout` and the owned string
-  implement the table of part 5 and may refine the shape of the `try_`
+- Decision 0021 (destructors), `inout` (decision 0020) and the owned string
+  of TASK-20260926-043 implement the table of part 5 and may refine the shape of the `try_`
   operations that take a value.
 - The freestanding profiles (OPEN #41): a declared ceiling, a trap hook,
   and how a freestanding program supplies its allocator.
