@@ -362,7 +362,7 @@ three units, and every operation says which one it counts: bytes, code
 points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
 
 - **[TEXT-1]** A string literal ([LEX-18]) has type `&str`: a read-only view
-  of the UTF-8 encoding of its characters, which lives for the whole
+  of the UTF-8 encoding of its code points, which lives for the whole
   execution (constant data of the program). *(decision 0023)* Other text
   views the bytes of an owned string, of validated bytes or of other text
   ([TEXT-8]); nothing copies text but the functions of `alloc/string`
@@ -378,7 +378,10 @@ points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
   ([TEXT-13]).
 - **[TEXT-4]** `t.bytes` is a `&[u8]` over the same bytes; nothing is copied.
   It follows the rules of slices ([REF-2]–[REF-4]): to index it, name it
-  first (`b := t.bytes`, then `b[i]`).
+  first (`b := t.bytes`, then `b[i]`). *(decision 0023)*
+  `utf8.byte_at(t: &str, i: usize) -> Option<u8>` (package `core/utf8`) is
+  the byte of `t` at byte offset `i`, or `None` when `i` is not below
+  `t.len`; it never traps.
 - **[TEXT-5]** `a == b` and `a != b` compare two texts byte by byte: they are
   equal when they have the same length and the same bytes. There is no
   normalization: `"e\u{301}"` (3 bytes) is not equal to `"\u{E9}"` (2
@@ -411,7 +414,13 @@ points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
   `Some(t)`, `Ok(t)`, `Err(t)` and `t?` view what `t` views, a `match` what
   the values of its arms view, a binding what its subject views; the result
   of a call that holds text views what its arguments view, but those of
-  `take` parameters. A view lives, as views of arrays do ([REF-7]): held by
+  `take` parameters. An element of a view `&mut [T]` (or a part of one)
+  views that view, also when it is a parameter: the view is the only access
+  to its array while it lives ([REF-6]), so text that views an element
+  through it **freezes the view** — no element is assigned or lent `inout`
+  through it, and it is not given to a call, while the text lives — and
+  text that views an array a live `&mut` view borrows is an error
+  ([OWN-10]). A view lives, as views of arrays do ([REF-7]): held by
   a variable, until the end of the block that declares it; given to a call,
   until the call returns; the subject of a `match`, while its arms run; the
   left operand of `==` or `!=`, until the right one is computed; the slice a
@@ -578,8 +587,9 @@ come with allocation (TASK-20260926-043, -044).
   parameter `inout p: T` **borrows the caller's place exclusively** for the
   call: the function reads and assigns `p` and its parts and passes them on
   as `inout`, but never moves `p` or a part of it out ([OWN-5]). `T` holds a
-  value: an integer, a float, `bool`, an enum, a struct, an `Option` or a
-  `Result` (a view, text, a capability or an array is an error). The
+  value: an integer, a float, `bool`, an enum, a struct, or an `Option` or
+  a `Result` of those (a view, text, a capability or an array is an error;
+  an `Option` or a `Result` that holds text counts as text, [TEXT-10]). The
   argument is written **`inout place`**, where the place is a `mut`
   variable, an `inout` parameter, or an element or a field of one ([STRUCT-5],
   [DECL-2]), or an element of a view `&mut [T]` ([REF-6]); it is a use of
@@ -1342,7 +1352,8 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([REF-3], [REF-4]),
 lists and boxes (decision 0022: their place and the shape of their
 operations, [ALLOC-1]–[ALLOC-4]), a copy of a value that holds an owned
-string ([STR-4]), grapheme clusters ([TEXT-14]), characters, the text
+string ([STR-4]), grapheme clusters ([TEXT-14]), a `char` type and
+character literals ([TEXT-13], [LEX-11]), the text
 operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
 types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),

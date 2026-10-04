@@ -75,6 +75,16 @@ it may view.
   parameter without `take` or `inout`, nothing).
 - `t.bytes`, `Some(t)`, `Ok(t)`, `Err(t)`, `t?` and a `match` (its arms'
   values; a binding, its subject) view what `t` views.
+- An element of a view `&mut [T]` (or a part of one) views **that view**,
+  also when it is a parameter. The view is the only access to its array
+  while it lives ([REF-6]), so the array cannot change under the text but
+  through the view: text that views an element through it freezes the
+  view while the text lives (assigning an element through it, E0363;
+  lending one `inout` or giving the view to a call, E0367), and text that
+  views an array a live `&mut` view borrows is a use of it (E0366). A
+  function may still return the text of an element of a `&mut [T]`
+  parameter, which its caller keeps; returned through a view declared in
+  the function, it views that view's array (E0750).
 - **The result of a call that holds text views what its arguments view**,
   but those given to `take` parameters, which the callee owns. So a
   function may return text of a parameter it borrows, and `fn f(s: &str)
@@ -127,7 +137,9 @@ from byte `start` to byte `end`, which views the same bytes, or
 `Err(OutOfRange)` (`start > end` or `end > t.len`) or `Err(NotBoundary)`
 (either inside the encoding of a code point); it never traps.
 `utf8.is_boundary(t, i)` and `utf8.next_boundary(t, i)` say where code
-points start. The operator form `t[i..j]` stays refused, with the
+points start, and `utf8.byte_at(t: &str, i: usize) -> Option<u8>` is the
+byte at offset `i`, or `None` when `i` is not below `t.len`, with no trap
+either ([TEXT-4]). The operator form `t[i..j]` stays refused, with the
 sub-slices of OPEN #47: when it comes, it is the trapping form of the same
 operation, and this one its recoverable form.
 

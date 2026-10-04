@@ -68,7 +68,7 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   context (see `semantics.md` [TY-4]).
 - **[LEX-11]** *(decision 0019)* `1.5` is a float literal ([LEX-19]).
   Character literals (`'x'`) are not supported: a code point is not a type in
-  this version, and text of one character is a string literal, `"x"`. A
+  this version, and text of one code point is a string literal, `"x"`. A
   double-quoted literal is the path of an import right after `import`
   ([LEX-17]), and a string literal anywhere else ([LEX-18]).
   *(Before decision 0015 a string literal was refused outside an import;
@@ -94,7 +94,7 @@ bin     = "0b" bindigit { [ "_" ] bindigit } ;
   close on its line are errors; for a character written as itself the
   mechanical fix is its escape, with the same bytes (`ç` becomes `\u{E7}`).
   The characters of [LEX-3a] are errors here as everywhere. The value of the
-  literal is the UTF-8 encoding of its characters, escapes decoded, so it is
+  literal is the UTF-8 encoding of its code points, escapes decoded, so it is
   always valid UTF-8. Writing non-ASCII text through escapes keeps the bytes
   a reader sees equal to the bytes the program holds, whatever the
   normalization or look-alike characters of an editor; allowing UTF-8 written
