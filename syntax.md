@@ -34,11 +34,11 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   not an identifier: it is the wildcard/discard token.
 - **[LEX-5]** Keywords: `package import pub as enum struct fn extern export
   effects mut require else return if while loop for in break continue match
-  true false const`. *(`loop`, `for`, `in`, `break` and `continue` since
-  decision 0016, and `const` since decision 0018; they were reserved words
-  before.)*
+  true false const unsafe`. *(`loop`, `for`, `in`, `break` and `continue`
+  since decision 0016, `const` since decision 0018, and *(experimental)*
+  `unsafe` since decision 0024; they were reserved words before.)*
 - **[LEX-6]** Reserved words, rejected as "not supported yet": `async await
-  defer dyn impl let module par self static trait type unsafe use var when
+  defer dyn impl let module par self static trait type use var when
   where yield`. `module` is rejected with a mechanical fix
   to `package` at the start of a file (`modules.md` [MIG-1]); `use` stays
   reserved (`modules.md` [IMP-6]); `let` and `var` are rejected with a note
@@ -252,7 +252,7 @@ type        = qual_name [ "<" type { "," type } ">" ]
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" | "&" "mut" ) unary | postfix ;   (* `&mut`: [REF-6] *)
-postfix     = primary { "(" [ arg { "," arg } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant, console.operation or x.copy (decision 0020) *)
+postfix     = primary { "(" [ arg { "," arg } [ "," ] ] ")"   (* callee is a name, import.name, Enum.Variant, import.Enum.Variant, console.operation, x.copy (decision 0020), Mmio.at or handle.operation (decision 0024) *)
                       | "[" expr "]"
                       | "." IDENT
                       | "?" } ;
@@ -262,7 +262,9 @@ primary     = INT | FLOAT | STRING | "true" | "false" | IDENT | HOLE
             | "[" [ expr { "," expr } [ "," ] ] "]"
             | "[" expr ";" expr "]"                 (* the count: a constant expression, [CONST-5] *)
             | struct_lit
-            | match ;
+            | match
+            | unsafe ;
+unsafe      = "unsafe" STRING "{" [ NL ] expr [ NL ] "}" ;   (* decision 0024: an unsafe region, semantics.md [UNS-1] *)
 struct_lit  = qual_name "{" [ field_init { ( "," | NL ) field_init } [ "," ] ] "}" ;
 field_init  = IDENT ":" expr ;
 match       = "match" head "{" [ arm { ( "," | NL ) arm } [ "," ] ] "}" ;
@@ -371,6 +373,13 @@ before decision 0017 they were refused (#33).
   a missing `=>`. Field patterns are separated by `,` or line
   breaks, as the fields of a literal ([NL-6]). A struct pattern appears only
   in a pattern: `Point { x: a, y: b } := p` is not a declaration.
+- **[GR-10]** *(experimental, decision 0024)* `unsafe` is followed by a
+  string literal, the reason, and by braces that hold one expression, which
+  may stand on its own line between them: `unsafe "UART0 registers" {
+  Mmio.at(UART0, 0x40) }`. It is a primary expression. A missing or empty
+  reason (only spaces) is an error (E0620 of the compiler), and so are
+  braces that hold nothing, more than one expression or a statement (E0621);
+  the meaning is in `semantics.md` [UNS-1].
 
 ## 4. Operators
 
