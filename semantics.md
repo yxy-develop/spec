@@ -15,7 +15,8 @@ compiler's diagnostic codes are listed in the compiler repository
   decision 0018)* constants ([CONST-1]). Item names are unique in
   the package, across its files (`modules.md` [PKG-4]). The prelude names —
   `bool`, the integer type names, `str`, `Console` *(decision 0015)*, `f32`
-  and `f64` *(decision 0019)*, `Option`, `Result`, `Some`, `None`, `Ok`,
+  and `f64` *(decision 0019)*, `Mmio` *(experimental, decision 0024)*,
+  `Option`, `Result`, `Some`, `None`, `Ok`,
   `Err`, the operations in §6.4, §6.5 and §6.6 — can not be redefined,
   neither as items, import names, parameters or local variables.
 - **[PRG-3]** An executable program has `fn main()` (§10). A package without
@@ -950,13 +951,17 @@ hold in every build mode; there is no unchecked release mode.
 - **[TRAP-1]** A trap writes one report to standard error and ends the
   process with exit status **101**. The report names the kind of failure (the
   table of §6.2, a refused console write, [CON-4], *(decision 0019)* a
-  float-to-integer conversion out of range, [FLT-8], or *(decision 0022)* a
-  failed allocation, [ALLOC-3], which no operation of this version makes)
+  float-to-integer conversion out of range, [FLT-8], *(decision 0022)* a
+  failed allocation, [ALLOC-3], or *(experimental, decision 0024)* an
+  access of an `Mmio` handle outside its block or misaligned, [MMIO-3], and
+  an unwind of foreign code that reached a Yxy frame, [ABI-3] (c))
   and the position of the
   checked operation,
   `<file>:<line>:<column>`; by default it is one line of text,
   `yxy: trap[<code>]: <kind> at <file>:<line>:<column> (site <n>)` *(the code
-  and site are experimental, [TRAP-3])*. It runs no cleanup and is not
+  and site are experimental, [TRAP-3])*. *(experimental, decision 0024)* A
+  foreign unwind is not a check and has no position or site: its report
+  says so (`(site unknown)`). It runs no cleanup and is not
   recoverable. Output written before the trap is kept (the test hooks write
   without buffering). *(experimental)* When several threads trap at the same
   time — threads of foreign code calling `export fn`, the only threads in
@@ -1121,11 +1126,18 @@ Both operands have the same integer type, taken from them or from context.
 - **[EFF-4]** An `extern fn` must declare `ffi`. The effects of foreign code are
   a **trusted declaration**, not verified; foreign calls are a trust boundary
   and tools report them as such.
-- **[EFF-5]** `ffi` is also the **unsafe boundary** of this version: foreign
-  code can do anything with the integers it receives, including treating them
-  as addresses. The memory-safety guarantees of this specification hold for
-  code whose effects exclude `ffi`, and for the Yxy side of every call. There is
-  no `unsafe` construct yet. *(experimental)* These guarantees assume that the
+- **[EFF-5]** *(experimental, decision 0024)* The **unsafe boundary** has two
+  parts: `ffi`, since foreign code can do anything with the integers it
+  receives, including treating them as addresses; and the unsafe regions
+  ([UNS-1]), whose obligations the compiler does not check. The
+  memory-safety guarantees of this specification hold for a function that
+  **does not declare `ffi` and does not reach an unsafe region** ([UNS-5]),
+  and for the Yxy side of every call. An unsafe region is a local contract,
+  not an effect: it is not in a function's signature, and tools find it
+  through the facts of `yxy inspect` (`reaches_unsafe`), computed over the
+  call graph, which is complete while every call is static. *(Before
+  decision 0024 there was no `unsafe` construct, and the guarantees held for
+  code whose effects exclude `ffi`.)* *(experimental)* These guarantees assume that the
   foreign side keeps the contract of the boundary: foreign callers of an
   `export fn` follow the target's C ABI ([ABI-2]); foreign code does not
   unwind across Yxy frames ([ABI-3] (c)); *(decision 0019)* foreign code
@@ -1153,6 +1165,8 @@ Both operands have the same integer type, taken from them or from context.
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |
 | loops (`while`, `loop`, `for`) | no tracked effect; iterating never traps ([LOOP-7]) |
+| unsafe region (`unsafe "reason" { … }`) | no tracked effect; a local contract, published by the tools ([UNS-3], [UNS-5]) |
+| access of an `Mmio` handle (`regs.read_u32(…)`) | no tracked effect in this version; may trap ([MMIO-3]) |
 | trap | not an effect; it writes its message to standard error and ends the process |
 | typed failure (`Result`, `require`, `?`) | not an effect; it is in the return type |
 | mutation of a local `mut` variable | not an effect |
@@ -1230,6 +1244,84 @@ generics (OPEN #5).
   — a `try_` function, or one whose result is a `Result` or `Option` for a
   failure — never traps for lack of memory.
 
+### 7.3 Unsafe regions *(experimental, decision 0024)*
+
+`unsafe` marks a manual obligation: something the program relies on that
+the compiler cannot check. A reason written with it does not prove the
+obligation; it lets a person or a tool find it and review it.
+
+- **[UNS-1]** `unsafe "reason" { value }` is an **unsafe region**: an
+  expression whose value and type are those of `value`, the one expression
+  between its braces ([GR-10]). The reason is a string literal that is not
+  empty or only spaces; it states why the obligation holds.
+- **[UNS-2]** An **unsafe operation** is valid only inside an unsafe region,
+  anywhere in the region's expression; outside one it is an error, also in a
+  function that has a region elsewhere: a region covers its braces, never
+  the rest of the function. A region whose expression holds no unsafe
+  operation of its own is an error: it states no obligation. Each unsafe
+  operation belongs to the innermost region around it. In this version the
+  only unsafe operation is `Mmio.at` ([MMIO-1]); calling an `extern fn` is
+  not one (it is `ffi`, [EFF-4]).
+- **[UNS-3]** A region is a **contract local to its function**, not an
+  effect: it adds nothing to the function's effects or signature, and a
+  function that holds one is called like any other (audit §12b.1, C3,
+  option (b)). The obligation is the region's author's; the compiler checks
+  only [UNS-2] and [UNS-4].
+- **[UNS-4]** *(the author's requirement E-4)* A function never reaches an
+  address its caller chooses just because its body holds `unsafe`: the
+  operands of an unsafe operation are **fixed in their function**: made of
+  literals, constants, immutable variables whose value is fixed, operators
+  on fixed values, and calls whose arguments are fixed (also a call of an
+  `extern fn`: what foreign code returns is `ffi`'s, the other part of the
+  boundary, [EFF-5]). A parameter is not fixed, nor
+  a `mut` variable, a variable bound by a pattern or a loop, or one
+  computed from any of them. An operand that is not fixed is an error. So
+  no safe function takes an integer and dereferences it; a function that
+  works on device memory receives an `Mmio` handle, created where its
+  address is known.
+- **[UNS-5]** Tools publish every region with its reason and its
+  operations, and whether each function **reaches** an unsafe region: it
+  holds one, calls a function that does, or may destroy a value whose
+  destructor does (`yxy inspect`: `unsafe_regions`, `reaches_unsafe`). An
+  `extern fn` reaches none; it is `ffi`.
+
+### 7.4 The `Mmio` capability *(experimental, decision 0024)*
+
+Device registers are reached through a capability, a typed handle created
+once at an unsafe boundary, never through an integer (audit §12b.1, row
+17).
+
+- **[MMIO-1]** `Mmio` is a capability: the authority to access a block of
+  `len` bytes at the address `base` with volatile accesses. It is created
+  only by `Mmio.at(base: usize, len: usize)`, the unsafe operation of
+  [UNS-2], in an unsafe region; no other expression creates one. The
+  region's obligation: the block is device memory, or memory valid for
+  these accesses, for the rest of the process; no Yxy value lives in it;
+  and `base + len` does not pass the end of the address space.
+- **[MMIO-2]** An `Mmio` may be a parameter or a local variable; passing or
+  copying it copies the authority, not the registers. It cannot be
+  returned or stored in a struct, an array, the data of a variant, an
+  `Option` or a `Result`, and does not cross the C boundary, so that the
+  parameters of a function show every block it can reach besides the
+  regions it holds ([CON-1] for the console).
+- **[MMIO-3]** Operations, called on a handle: `regs.read_uN(offset:
+  usize) -> uN` and `regs.write_uN(offset: usize, value: uN)` for `N` of
+  8, 16, 32 and 64. Each is safe, valid anywhere, and is **one volatile
+  access** of `N` bits at the address `base + offset`: never removed,
+  duplicated, merged with another, split, or reordered with another access
+  of a handle of the same thread; whether the target orders it with other
+  memory accesses, and the order of its bytes, are the target's (no
+  barrier is implied). An access traps unless the block holds it, `offset +
+  N / 8 <= len` (*MMIO access out of bounds*), and then, for `N` above 8,
+  unless its address is a multiple of `N / 8` (*misaligned MMIO access*);
+  nothing is read or written then ([TRAP-1], [TRAP-3]). An access performs
+  no tracked effect in this version: the catalogue of effects grows only
+  through its own decision (`decisions/OPEN.md` #9).
+- **[MMIO-4]** `Mmio` needs no allocation and no operating system: a
+  package that uses it stays in the layer `core` (`modules.md` [STD-5]).
+  The tests of the toolchain create handles over a block of memory that a
+  test hook gives, never over hardware.
+
 ## 8. The C boundary
 
 - **[ABI-1]** `extern fn name(…) -> T effects { ffi }` declares a C function
@@ -1293,11 +1385,32 @@ generics (OPEN #5).
     exit that does not go through the unwinder (a `longjmp`, the end of a
     thread that does not unwind) is not detected; what it does, like an
     unwind that no Yxy frame refuses, is outside the guarantees of this
-    specification. *(decision 0020, U1)* The end of the process there is to
-    become a trap report ([TRAP-1]): an unwind that reaches a Yxy frame from
-    foreign code aborts the process with a report, and never runs a
-    destructor ([DROP-3]); until the compiler writes that report, the
-    process ends as above (`decisions/OPEN.md` #45).
+    specification. *(decision 0020, U1; carried out by decision 0024)* The
+    process ends there with a trap report ([TRAP-1]): an unwind that
+    reaches a Yxy frame from foreign code — in the search for a handler, in
+    cleanup, or forced — aborts the process with the report of *foreign
+    unwind reached a Yxy frame*, which names no site, before any handler
+    above that frame runs, and never runs a destructor ([DROP-3]).
+
+- **[ABI-4]** *(experimental, decision 0024; `decisions/OPEN.md` #34)*
+  **Nothing owned or borrowed crosses the boundary.** The parameters and
+  results of `extern fn` and `export fn` are the values of [ABI-2], passed
+  by value: a copy goes to the other side, and nothing else does. So:
+  - a value with a destructor (an owned string, a struct, [DROP-1]) is
+    never given to C nor received from it: no destructor runs on the
+    foreign side for a Yxy value, and C never frees memory Yxy owns, nor
+    Yxy memory C owns;
+  - a view (`&str`, `&[T]`, `&mut [T]`) never crosses, so no view of Yxy
+    memory outlives its owner on the foreign side, and none of foreign
+    memory is used by Yxy code as if Yxy owned it;
+  - `take` ([OWN-3]) has no meaning there, since only copy types cross,
+    and is an error, as on any copy type; `inout` ([OWN-9]) cannot cross,
+    since C cannot borrow a place of the caller exclusively;
+  - a capability (`Console`, `Mmio`) never crosses ([CON-1], [MMIO-2]);
+  - an address that foreign code gives is an integer: Yxy code reaches the
+    memory behind it only through an `Mmio` handle created in an unsafe
+    region whose reason states the obligation ([UNS-1], [MMIO-1]), and
+    frees it only by calling foreign code.
 
 ## 9. Targets
 
@@ -1344,7 +1457,7 @@ variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
 patterns (`..`) and field shorthand in patterns, destructuring declarations
 (`P { x: a } := p`), user-defined generics, traits, closures, function
 values, method calls (other than the operations of a `Console`, [CON-2],
-and `.copy()`, [OWN-6]), owned resources other than the owned string
+of an `Mmio`, [MMIO-3], and `.copy()`, [OWN-6]), owned resources other than the owned string
 (decision 0023), an implicit copy of a struct
 or of an enum with data (decision 0020, [OWN-1]), `inout` on a parameter
 that holds no value or at the C boundary, `&mut` of anything but a `mut`
@@ -1353,7 +1466,11 @@ called by name, a copy of a value that has a destructor ([DROP-4]),
 loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating text by
 element (OPEN #49), compound assignment (`+=` and the other `op=` forms),
-`unsafe`, references other than slices and views,
+statements, or more than one expression, in an unsafe region, `unsafe fn`,
+unsafe operations other than `Mmio.at` ([UNS-2]), dereferencing an integer
+(raw pointers), an `Mmio` returned or stored ([MMIO-2]), an operand of an
+unsafe operation not fixed in its function ([UNS-4]),
+references other than slices and views,
 arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
