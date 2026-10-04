@@ -1275,7 +1275,12 @@ obligation; it lets a person or a tool find it and review it.
   `extern fn`: what foreign code returns is `ffi`'s, the other part of the
   boundary, [EFF-5]). A parameter is not fixed, nor
   a `mut` variable, a variable bound by a pattern or a loop, or one
-  computed from any of them. An operand that is not fixed is an error. So
+  computed from any of them. Nor is a value read through an `Mmio` handle
+  ([MMIO-3]), because device memory can carry an integer the caller chose
+  (written there through a handle to the same block, then read back): not
+  an access of a handle, not the result of a call that receives a handle,
+  and not the result of a call of a function that reaches an unsafe region
+  ([UNS-5]). An operand that is not fixed is an error. So
   no safe function takes an integer and dereferences it; a function that
   works on device memory receives an `Mmio` handle, created where its
   address is known.
@@ -1379,8 +1384,8 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
     `noexcept` wrapper with `catch (...)`). When the precondition is broken
     through the platform's unwinder (Itanium C++ ABI), the frame of the Yxy
     function that called the foreign code refuses the unwind when the
-    unwinder reaches it, and the process ends (for a C++ exception, the C++
-    runtime calls `std::terminate`) instead of skipping Yxy frames; this
+    unwinder reaches it, and the process ends with the trap report below
+    instead of skipping Yxy frames; this
     holds where that frame is on the stack while the foreign code runs. An
     exit that does not go through the unwinder (a `longjmp`, the end of a
     thread that does not unwind) is not detected; what it does, like an

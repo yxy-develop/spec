@@ -1,16 +1,20 @@
 # Decision 0024: Unsafe regions, the `Mmio` capability, ownership at the C boundary and unwinding
 
-- Status: Accepted — **experimental**. Written under TASK-20260926-045 of
+- Status: Experimental — not accepted. Written under TASK-20260926-045 of
   the master plan (Phase 8). Two of its parts carry out choices of the
   author: E-4 (a requirement of the author, register of the control
   repository: "`unsafe` marks manual obligations; a safe function never
   dereferences an arbitrary address just because its body contains
   `unsafe`") and U1 of R-7 (2026-09-29: a foreign unwind aborts at the C
   boundary with a trap report; decision 0020). The route of U1, the
-  personality routine, is the recommendation (a) of item R-7.5 of the
-  request for the gate of 0.2 (`plans/reviews/2026-10-04-gate-0.2-request.md`),
-  which awaits the author's answer; the rest are the orchestrator's choices,
-  with the alternatives below, for the author's review.
+  personality routine (part 5), is the recommendation (a) of item R-7.5 of
+  the request for the gate of 0.2 (`plans/reviews/2026-10-04-gate-0.2-request.md`),
+  which awaits the author's answer: part 5 depends on that answer, and the
+  decision stays experimental at least until it comes. The rest are the
+  orchestrator's choices, with the alternatives below, for the author's
+  review. Amended the same day by the task's self-check (P45-2, P45-3):
+  the event of a trap without a site is `yxy.trap/v2` (part 5), and a value
+  read through an `Mmio` handle is not fixed (part 3).
 - Date: 2026-10-04
 - Origin: TASK-20260926-045; the architecture audit of 2026-09-26, §12b.1
   (C3, option (b); rows 17 and 18; task 7; `plans/reviews/2026-09-26-architecture-audit.md`);
@@ -108,14 +112,27 @@ of literals, constants, immutable variables whose value is fixed,
 operators, and calls whose arguments are fixed. A parameter is not fixed,
 nor a `mut` variable, a variable bound by a pattern or a loop, or one
 computed from them; an operand that is not fixed is an error (E0624 of the
-compiler). So `fn peek(addr: usize) -> u8 { … Mmio.at(addr, 1) … }` is
-refused whatever its region says: a function that works on device memory
+compiler). **Nor is a value read through an `Mmio` handle**: device memory
+can carry an integer the caller chose. A caller with a handle to the same
+block writes an address there, then calls a function whose operand reads
+it back (`p := widen(dev.read_u32(0))`, then `Mmio.at(p, 1)`): without
+this rule that function would reach an address its caller chose, through
+a region whose operands look fixed, which E-4 excludes. The same holds for
+what a call may have read through a handle: the result of a call that
+receives a handle, and the result of a call of a function that reaches an
+unsafe region ([UNS-5]; every call is static, so this is known once the
+whole program is checked), are not fixed either. A function that does
+need an address from the device receives a handle created where that
+address is known (OPEN #51 lists `unsafe fn` for the rest). So
+`fn peek(addr: usize) -> u8 { … Mmio.at(addr, 1) … }` is refused
+whatever its region says: a function that works on device memory
 receives a handle ([MMIO-2]), created where the address is known. The rule
 is syntactic and conservative: it reads only what the operand's
 expression and the initializers of the variables it names are made of,
-and needs no flow analysis. A foreign call's result counts as fixed when
-its arguments are: what foreign code returns is `ffi`'s, the other half of
-the boundary.
+and needs no flow analysis, besides the reach of regions over the call
+graph that [UNS-5] already computes. A foreign call's result counts as
+fixed when its arguments are: what foreign code returns is `ffi`'s, the
+other half of the boundary.
 
 ### 4. MMIO as a capability ([MMIO-1]–[MMIO-4])
 
@@ -163,10 +180,14 @@ report cannot name the call the unwind came through: its kind is *foreign
 unwind reached a Yxy frame*, with no position and no site. In the
 compiler's terms: code T0008, the human line
 `yxy: trap[T0008]: foreign unwind reached a Yxy frame (site unknown)`,
-and a JSON event `yxy.trap/v1` with the same fields and types, `site`,
-`line` and `column` 0 and `file` empty, values no check reports. A table
-of call sites read by the routine could name the call later without
-changing this rule (OPEN #45 lists it).
+and a JSON event of a new schema, `yxy.trap/v2`: the fields of
+`yxy.trap/v1`, in the same order, with `site`, `file`, `line` and
+`column` null. `yxy.trap/v1`, frozen since v0.0.1, does not change: it
+stays the event of every failed check, which has a site, and a reader of
+it never meets a trap without one (the compiler's implementation decision
+0010, amendment of 2026-10-04). `yxy run --json` and `yxy test` report
+the event as a trap. A table of call sites read by the routine could name
+the call later without changing this rule (OPEN #45 lists it).
 
 Test 5' of TASK-20260926-017, which recorded the end through
 `std::terminate`, is replaced in the same change by a test of this
@@ -196,7 +217,9 @@ reason, and a test that lists every case.
 - `tests/fail`: no safe function dereferences an integer (a parameter, a
   value derived from one, a `mut` variable, a call on a parameter, a
   pattern or loop variable, `Mmio.at` outside the region of a function
-  that has one elsewhere); the syntax of regions; regions without an
+  that has one elsewhere, an address read back from the device, also
+  through a handle whose base foreign code gave, the result of a call
+  that receives a handle or of one that reaches a region); the syntax of regions; regions without an
   unsafe operation and operations without a region; the capability's
   places; every owned or borrowed type at the boundary.
 - `tests/run`: a handle created in `main` and used by safe functions;
@@ -235,7 +258,17 @@ programs accepted, more to explain and test. (iii) Constant expressions
 only: no handle on an address known at run time (from a device tree, or a
 test hook). Chosen: operands fixed in their function, a syntactic rule
 over immutable bindings, which accepts the addresses of a memory map and
-of foreign calls, and refuses every value a caller chooses.
+of foreign calls, and refuses every value a caller chooses. For values
+read through a handle: (iv) counting them as fixed, as the first form of
+this decision did, which the self-check of the task refuted (a caller
+writes the address to the device, and the function reads it back);
+(v) refusing only an access written in the operand or in the
+initializers it names, which a call that reads the device for it
+(`Mmio.at(register0(dev), 1)`, or a function that creates its own handle)
+still gets around. Chosen: no value read through a handle is fixed,
+directly or through a call that receives a handle or reaches a region;
+conservative, at the cost of refusing an address computed by a function
+that also touches a device.
 
 **MMIO.** (a) Raw pointers and a dereference allowed in a region: what E-4
 and the master prompt §8 exclude unless a capability validates the
@@ -251,12 +284,14 @@ becomes `invoke`, +3 996 bytes for 100 calls at -O0, and the report only
 when a `catch` stands above the Yxy frame (D5). U2, a mark on the `extern`
 that may throw: new syntax, and an unmarked throw still ends through
 `std::terminate`. U0, the precondition without a report: what the author's
-R-7 replaced. Chosen: U1 by (ii). For the site of the report: a JSON event
-with `site`, `file`, `line` and `column` null would change the types of
-`yxy.trap/v1`, frozen since v0.0.1, and need `yxy.trap/v2`; chosen: the
-same types, with values no check reports (implementation decision 0010
-declares `code` and `kind` open; the zero site is documented with T0008 in
-the compiler's `docs/diagnostics.md`).
+R-7 replaced. Chosen: U1 by (ii). For the site of the report: (a) the types
+of `yxy.trap/v1` with values no check reports (`site`, `line`, `column` 0,
+`file` empty): the first form of this decision, retracted by the task's
+self-check, because it changed what a `yxy.trap/v1` event can mean while
+that schema is frozen since v0.0.1 (rule 4 of the compiler's
+`docs/json.md`). Chosen: (b) `site`, `file`, `line` and `column` null,
+which changes their types and so is a new schema, `yxy.trap/v2`, written
+only for a failure without a site, with `yxy.trap/v1` unchanged.
 
 **Ownership across the boundary.** O2: views lent to C for the duration of
 a call, as a pointer and a length, with C's promise not to keep them: what
