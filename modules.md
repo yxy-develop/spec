@@ -338,7 +338,8 @@ effects {}
   The layer of another package is the highest layer among the packages it
   imports, directly or not, and `std` when one of its functions has a
   parameter or variable of type `Console` (the capability of the hosted
-  runtime, [CON-1]); otherwise it is `core`. The layers are ordered
+  runtime, [CON-1]) or *(decision 0026)* of another root capability,
+  `Files`, `Net`, `Clock` or `Random` ([CAP-1]); otherwise it is `core`. The layers are ordered
   `core` < `alloc` < `std`.
 - **[STD-6]** *(experimental, decision 0022)* The **layer of a program** is
   the highest layer of its packages: its main package and every package it
@@ -354,15 +355,22 @@ effects {}
   ([EFF-5]). The trap report of a hosted program ([TRAP-1]) belongs to the
   hosted runtime in every layer; a freestanding profile gives a `core`
   program its own (OPEN #41).
-- **[STD-8]** *(experimental, decisions 0022 and 0023)* The packages of the
+- **[STD-8]** *(experimental, decisions 0022, 0023 and 0026)* The packages of the
   standard library in this version are `core/ascii` (ASCII bytes:
   classification, case, digit value), `core/utf8` (UTF-8 text: validation of
   bytes, boundaries, parts and code points, `semantics.md` [TEXT-11]–
   [TEXT-13]), `alloc` (`AllocError`, the error of the `try_` operations of
   [ALLOC-3]; nothing of it allocates), `alloc/string` (the owned string,
-  `semantics.md` [STR-1]–[STR-5], the first package that allocates) and
-  `std/print` (writing through a `Console` the caller passes). `Console`
-  stays a prelude name ([PRG-2]) and is of the `std` layer ([STD-5]). The
+  `semantics.md` [STR-1]–[STR-5], the first package that allocates),
+  `std/print` (writing through a `Console` the caller passes) and *(decision
+  0026)* `std/fs`, `std/socket`, `std/time` and `std/rand` (the files, the
+  network at the level of sockets, the clocks and the entropy of the host,
+  through the capability each function takes, `semantics.md` [FS-1]–[FS-3],
+  [SOCK-1], [SOCK-2], [CLOCK-1], [RAND-1]) and `std/capture` (a console in
+  memory for tests, [CON-5]). `Console` stays a prelude name ([PRG-2]) and
+  is of the `std` layer ([STD-5]), as are `Files`, `Net`, `Clock` and
+  `Random`. No package of the standard library is about a protocol above
+  sockets (HTTP), a database or inference (the author's requirement Y-9). The
   place of the other owned heap types (`alloc/list`, `alloc/boxed`) and the
   shape of their operations are in decision 0022, part 5; they wait for
   generics (OPEN #5).
@@ -373,7 +381,11 @@ effects {}
   initializers, no top-level statements, no global variables initialized at
   start-up and no `init` functions. Importing a package has no effect at run
   time: the only code a program runs is reached from `main`, or from an
-  `export fn` called by foreign code.
+  `export fn` called by foreign code. *(experimental, decision 0026)* So no
+  capability is a global value: the root capabilities are born in `main`
+  (`semantics.md` [MAIN-1], [CAP-2]), and if a later decision gives
+  `static` (a reserved word) a meaning, a static value is never a
+  capability nor holds one ([CAP-7]).
 - **[INIT-2]** *(decision 0018)* Compile-time constants are evaluated by
   the compiler under explicit limits (as [GR-5] limits parsing; the steps
   of `semantics.md` [CONST-4]), have no effects, and do not run package code

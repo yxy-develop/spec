@@ -13,6 +13,12 @@
   effect, `console`, performed by the operations of the first capability,
   `Console` (`semantics.md` [EFF-2], [CON-3]). Item 2 below reads "`ffi`
   and `console`"; the other items do not change.
+- Amendment (2026-10-04, experimental): decision 0026 writes the catalogue
+  this decision deferred. Item 2 reads "`ffi`, `console`, `fs`, `net`,
+  `clock` and `random`", the last four performed by the functions of the
+  standard library that take the capabilities `Files`, `Net`, `Clock` and
+  `Random` ([EFF-2], [CAP-3]); item 1 gains the wording of E-1 ([EFF-1]);
+  items 3 and 4 do not change.
 
 ## Decision
 

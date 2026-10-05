@@ -14,6 +14,12 @@
   master plan (`plans/reviews/2026-09-26-master-plan.md`).
 - Spec: `modules.md` §4.2 ([STD-1]–[STD-8]), [PKG-7]; `semantics.md` §7
   (table), §7.2 ([ALLOC-1]–[ALLOC-4]), [TRAP-1]; `OPEN.md` #30 and #41.
+- Amendment (2026-10-04, experimental): decision 0026 adds the packages
+  `std/fs`, `std/socket`, `std/time`, `std/rand` and `std/capture` ([STD-8])
+  and the root capabilities `Files`, `Net`, `Clock` and `Random`, of the
+  `std` layer as `Console` is ([STD-5]); it decides with the measure of
+  part 6 (decision 0026, part 10), which the compiler's test takes again
+  over the corpus with its programs.
 - Author requirements it follows (register of the control repository):
   M-2 (nothing silent), M-4 (no abort hidden behind an API presented as
   recoverable), E-2 (effects checked transitively), E-3 (a capability is not

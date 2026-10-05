@@ -7,6 +7,12 @@
 - Date: 2026-09-28
 - Number: 0014 is held by the register's L-0014 ([GR-3], recorded in
   `syntax.md` without a file of its own), so this decision takes 0015
+- Amendment (2026-10-04, experimental): decision 0026 makes `Console` the
+  first of five root capabilities, all given to `main` ([MAIN-1], [CAP-2]),
+  and adds the console in memory, derived from a console, which writes to
+  a stream in memory for tests ([CON-5]); item 8 reads "the authority to
+  write to a stream: standard output, or a stream in memory"; the measure of
+  the redundancy is decided there (part 10: both stay).
 - Spec: `syntax.md` [LEX-11], [LEX-17], [LEX-18], [GR-1], [GR-7];
   `semantics.md` §2 (table), [PRG-2], §4.1 ([TEXT-1]–[TEXT-7]), [EFF-2],
   §7.1 ([CON-1]–[CON-4]), [TRAP-1], [MAIN-1], §12; `OPEN.md` #7 (its borrowed

@@ -16,6 +16,7 @@ compiler's diagnostic codes are listed in the compiler repository
   the package, across its files (`modules.md` [PKG-4]). The prelude names —
   `bool`, the integer type names, `str`, `Console` *(decision 0015)*, `f32`
   and `f64` *(decision 0019)*, `Mmio` *(experimental, decision 0024)*,
+  `Files`, `Net`, `Clock` and `Random` *(experimental, decision 0026)*,
   `Option`, `Result`, `Some`, `None`, `Ok`,
   `Err`, the operations in §6.4, §6.5 and §6.6 — can not be redefined,
   neither as items, import names, parameters or local variables.
@@ -41,6 +42,7 @@ compiler's diagnostic codes are listed in the compiler repository
 | `&mut [T]` | a view of the elements of a `mut` array that may assign them *(experimental, decision 0020, TASK-042 part; [REF-6])* | parameters, and local variables declared with `&mut a` |
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]), and in an `Option` or a `Result` there ([TEXT-10]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
+| `Files`, `Net`, `Clock`, `Random` | the root capabilities of the files, the network, the clocks and the entropy of the host *(experimental, decision 0026; §7.5, §7.6)* | parameters and local variables only ([CAP-2]) |
 | `T` (a type parameter) | a value of the type argument of an instantiation *(experimental, decision 0025; §2.3)* | inside its generic item only; a move type that may have a destructor ([GEN-5]) |
 | `fn(P1, take P2) -> R effects { e }` | a function of the program *(experimental, decision 0025, [GEN-7])* | anywhere a value type may appear, but the C boundary ([ABI-2]) |
 
@@ -258,9 +260,10 @@ language. See `decisions/0025-generics.md`.
   instantiation of a generic struct or enum, a function type, a type
   parameter of the item, and an `Option` or a `Result` of those. An array, a
   view (`&[T]`, `&mut [T]`), text (also inside an `Option` or a `Result`) and
-  a capability (`Console`, `Mmio`) are not, written or determined: a value
-  of a type parameter can always be stored, moved and returned, and no
-  capability travels hidden in one ([CON-1], [MMIO-2]).
+  a capability (`Console`, `Mmio`, *(decision 0026)* `Files`, `Net`,
+  `Clock`, `Random`) are not, written or determined: a value of a type
+  parameter can always be stored, moved and returned, and no capability
+  travels hidden in one ([CON-1], [MMIO-2], [CAP-2]).
 - **[GEN-4]** A generic item is checked once, in its generic form, where a
   type parameter is an opaque type: a value of it may be declared, moved,
   borrowed, given to a parameter (borrowed, `take` or `inout`), returned,
@@ -653,8 +656,9 @@ come with allocation (TASK-20260926-043, -044).
 
 - **[OWN-1]** *(classes)* The **copy types** are `bool`, the integers, the
   floats, `()`, enums without data, `Option` and `Result` whose type
-  arguments are all copy types, `&[T]`, `&str` and `Console` (copying a
-  capability copies the authority, [CON-1]), *(experimental, decision 0025)*
+  arguments are all copy types, `&[T]`, `&str`, `Console` (copying a
+  capability copies the authority, [CON-1]) and *(decision 0026)* the other
+  root capabilities ([CAP-2]), *(experimental, decision 0025)*
   and function types ([GEN-7]). The **move types** are every
   struct, every enum with a variant that holds data, `Option` and `Result`
   with a move type as an argument, and every array; *(decision 0025)* in a
@@ -1283,18 +1287,30 @@ Both operands have the same integer type, taken from them or from context.
 ## 7. Effects
 
 - **[EFF-1]** `effects { … }` lists the effects a function may perform.
-  `effects {}` means **none of the effects tracked by the language**. It does
-  not mean that the function cannot trap, always terminates, reads no
-  arguments, or costs nothing.
-- **[EFF-2]** Tracked effects in this version: `ffi` — calling code outside
-  Yxy — and *(experimental, decision 0015)* `console` — writing through a
-  `Console` capability ([CON-3]). Other names are errors. The set will grow as
-  the standard library appears. Which other concerns become effects is not
-  settled: files, network, clock and randomness are candidates. Allocation
-  is not an effect *(experimental, decision 0022)*: it is what the `alloc`
-  layer gives ([ALLOC-1]). *(experimental)* The criterion of
-  `decisions/OPEN.md` #9 (type, contract, effect or capability) is applied to
-  each candidate.
+  *(the author's requirement E-1; wording of decision 0026)* `effects {}`
+  means the absence of the tracked effects: the function performs none of
+  `clock`, `console`, `ffi`, `fs`, `net` and `random`, itself or through
+  anything it calls; it does not mean that the function is pure, that it
+  does not allocate or that it cannot trap. Nor that it always terminates,
+  reads no arguments, or costs nothing. (The tools publish the same
+  sentence in the `limits` of their facts.)
+- **[EFF-2]** Tracked effects in this version, the catalogue of decision
+  0026 *(experimental)*: `ffi` — calling code outside Yxy ([EFF-4]);
+  *(decision 0015)* `console` — writing through a `Console` capability
+  ([CON-3]); and `fs`, `net`, `clock` and `random` — an operation on the
+  resource of a `Files`, `Net`, `Clock` or `Random` capability ([CAP-3]).
+  Other names are errors. The catalogue is small and extensible, not a
+  catalogue of domains: a name enters it only by a decision, and only for a
+  kind of action that the language or the hosted runtime mediates; a
+  domain of a library (a database, mail, HTTP, inference) is a capability of
+  that library over an effect of the core, never an effect of its own (the
+  author's requirement Y-9; decision 0026, part 2). Effects declared by
+  libraries are not part of this version (`decisions/OPEN.md` #54).
+  Allocation is not an effect *(experimental, decision 0022)*: it is what
+  the `alloc` layer gives ([ALLOC-1]); nor are an access of an `Mmio`
+  ([MMIO-3]) or an unsafe region ([UNS-3]). The criterion of the note on
+  `decisions/OPEN.md` #9 (type, contract, effect or capability) classified
+  each candidate (decision 0026, part 1).
 - **[EFF-3]** At every call, the callee's declared effects must be a subset of
   the caller's declared effects. Because the rule uses declared effects, it
   holds through recursion. Where the call appears (which region) does not
@@ -1350,6 +1366,8 @@ Both operands have the same integer type, taken from them or from context.
 | dynamic call (a value of a function type) | the effects of its function type, and the destruction effects of the types of its `take` and `inout` parameters ([GEN-8]) |
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
+| a function of `std/fs`, `std/socket`, `std/time` or `std/rand` that takes a capability | `fs`, `net`, `clock` or `random` ([CAP-3]) |
+| destruction of a `socket.Socket` | `net`, the effect of its destructor ([SOCK-2], [DROP-5]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |
 | loops (`while`, `loop`, `for`) | no tracked effect; iterating never traps ([LOOP-7]) |
 | unsafe region (`unsafe "reason" { … }`) | no tracked effect; a local contract, published by the tools ([UNS-3], [UNS-5]) |
@@ -1365,12 +1383,14 @@ Static effect checking is not an operating-system sandbox.
 
 A capability is a value that carries authority over a resource; an effect
 describes what may happen. The console has both: the capability says which
-stream, the effect that a write may happen.
+stream, the effect that a write may happen. It is the first root capability
+of §7.5.
 
 - **[CON-1]** `Console` is a capability: the authority to write to the
-  process's standard output. No expression creates one: the runtime of a
-  hosted program gives it to `main` ([MAIN-1]), and a function that writes to
-  it receives it as a parameter. There is no global console: there are no
+  process's standard output — or, *(decision 0026)* for a console derived
+  in memory, to its stream in memory ([CON-5]). No expression creates one:
+  the runtime of a hosted program gives it to `main` ([MAIN-1]), and a
+  function that writes to it receives it as a parameter. There is no global console: there are no
   global variables ([INIT-1]). A `Console` may be a parameter or a local
   variable; passing or copying it copies the authority, not the stream. It
   cannot be returned or stored in a struct, an array, `Option` or `Result`,
@@ -1395,6 +1415,19 @@ stream, the effect that a write may happen.
   recoverable and are documented as trapping. On a pipe whose reader has
   gone, the operating system's default for SIGPIPE applies (it ends the
   process); a program does not change signal dispositions.
+- **[CON-5]** *(experimental, decision 0026)* A **console in memory** is
+  derived from a console by `capture.text(console, f)` of the package
+  `std/capture` ([CAP-4]): `f`, a value of `fn(Console) effects { console
+  }`, is called with a new console whose operations append to a stream in
+  memory instead of writing to standard output, and `capture.text` returns
+  what was written, as an owned string (`alloc/string`). So a function that
+  writes to its `Console` is tested without changing it and without foreign
+  code (the audit's §12b.1, task 5 (c)). The console in memory lives for
+  that call: a console is never returned or stored ([CON-1]). Its
+  operations perform `console` ([CON-3]) and keep [CON-4]; the stream
+  refuses a write when the allocator has no memory for it (*console write
+  failed*). Making it and copying its text trap with *allocation failed*
+  when the allocator has none ([ALLOC-3]), as `capture.text` documents.
 
 ### 7.2 Allocation and out of memory *(experimental, decision 0022)*
 
@@ -1514,6 +1547,114 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
   The tests of the toolchain create handles over a block of memory that a
   test hook gives, never over hardware.
 
+### 7.5 Capabilities *(experimental, decision 0026)*
+
+An effect says what kind of action may happen during a call; a capability
+is the value that reaches a concrete resource. The two are checked by
+different rules: [EFF-3] for the effect, [CAP-2] and [CAP-3] for the
+capability. Decision 0026 classifies every concern of the catalogue
+(part 1) and fills, for each hosted resource, its effect, its capability,
+its failure and its contract (part 2).
+
+- **[CAP-1]** A **capability** is a value that carries authority over a
+  concrete resource. Holding one never grants its effect, and declaring an
+  effect never grants a capability. A **root capability** is given by the
+  hosted runtime to `main`: `Console` ([CON-1]), `Files` ([FS-1]), `Net`
+  ([SOCK-1]), `Clock` ([CLOCK-1]) and `Random` ([RAND-1]), names of the
+  prelude ([PRG-2]). `Mmio` ([MMIO-1]) is a capability created by an unsafe
+  operation, not a root one.
+- **[CAP-2]** A root capability is **born only in `main`** ([MAIN-1]): no
+  expression of any function creates one, names its type as a value, calls
+  it or calls a function on the type. It may be a parameter or a local
+  variable; passing or copying it copies the authority, not the resource.
+  It cannot be returned or stored in a struct, an array, the data of a
+  variant, an `Option` or a `Result`, be a type argument ([GEN-3]), or cross
+  the C boundary ([ABI-4]), so that the parameters of a function show every
+  root capability it can reach.
+- **[CAP-3]** An operation on a hosted resource needs **both** the
+  capability, given as an argument, and its effect, declared by the
+  function that performs it and, by [EFF-3], by every caller: `console` for
+  a `Console`, `fs` for `Files`, `net` for `Net`, `clock` for `Clock`,
+  `random` for `Random`. A function that holds the capability without
+  declaring the effect cannot perform the operation (the call is refused,
+  as any call whose effects are not declared), and one that declares the
+  effect without holding the capability cannot name the resource (refused
+  where the capability is expected). The operations of `Files`, `Net`,
+  `Clock` and `Random` are functions of the packages `std/fs`, `std/socket`,
+  `std/time` and `std/rand`, which take the capability as their first
+  parameter; the capabilities have no operations of their own.
+- **[CAP-4]** A **derived capability** is obtained from another capability
+  and reaches a part of its resource, or a resource of its own: a console
+  in memory from a `Console` ([CON-5]); a `socket.Socket` from a `Net`
+  ([SOCK-2]). A derived capability that is a type of the library moves and
+  may be stored like any value of its type, so the parameters of a function
+  no longer show every resource it reaches; its operations and its
+  destructor perform the effect of its root, which stays the transitive
+  bound read from the signature.
+- **[CAP-5]** The hosted library exposes **no free function that reaches a
+  hosted resource**: every public function of a package of `std` that
+  performs an effect of the catalogue receives, as a parameter, a
+  capability of that effect, a root one or one derived from it. The
+  operations of the hosted runtime that the library calls take the
+  capability too.
+- **[CAP-6]** A failure of an operation on files, the network, a clock or
+  the entropy is a **value**: the operation returns a `Result` whose error
+  is an enum of its package, and never traps (M-4: none is presented as
+  recoverable while hiding an abort). The console's operations trap
+  instead, as [CON-4] documents.
+- **[CAP-7]** **No capability is a global singleton.** There are no global
+  variables ([INIT-1]); `static` is a reserved word with no meaning
+  ([LEX-6]), and if a later decision gives it one, a static value is never a
+  capability nor holds one. A program reaches a hosted resource only through
+  the capabilities its `main` received.
+
+### 7.6 The hosted resources *(experimental, decision 0026)*
+
+- **[FS-1]** `Files` is the authority over the files under the working
+  directory of the process. `fs.write(files, path, data: &[u8]) ->
+  Result<(), fs.FsError>` writes the bytes to the file at `path`, created
+  when it does not exist (mode 0644) and emptied when it does;
+  `fs.read(files, path, buf: &mut [u8]) -> Result<usize, fs.FsError>` reads
+  the file from its start into `buf` and gives the number of its bytes.
+  Each performs `fs`.
+- **[FS-2]** A path that `Files` reaches is relative: it is not empty, does
+  not start with `/`, has no `..` component and no zero byte, and has at most
+  1023 bytes. Any other path is refused with `Err(FsError.InvalidPath)`
+  before the operating system sees it. The check is on the text of the
+  path: symbolic links are followed, and one under the directory may lead
+  out of it; static checking is not an operating-system sandbox (§7).
+- **[FS-3]** The failures of `std/fs` are `fs.FsError`: `NotFound`,
+  `PermissionDenied`, `IsDirectory`, `InvalidPath`, `TooLarge` (the file
+  has more bytes than `buf` holds; `buf` then holds its first bytes) and
+  `Other(errno)`, the error number of the operating system. An interrupted
+  call is retried.
+- **[CLOCK-1]** `Clock` is the authority to read the clocks of the host.
+  `time.monotonic_ns(clock) -> Result<u64, time.ClockError>` reads the
+  monotonic clock, in nanoseconds from a start the system chooses, which
+  never goes back; `time.wall_ns(clock) -> Result<i64, time.ClockError>`
+  the wall clock, in nanoseconds since 1970-01-01 00:00:00 UTC, which may go
+  back when the system's time is set. `Err(Unavailable)` when the system
+  gives no time or it does not fit in an `i64` of nanoseconds. Each performs
+  `clock`.
+- **[RAND-1]** `Random` is the authority to draw entropy from the operating
+  system. `rand.fill(random, buf: &mut [u8]) -> Result<(), rand.RandomError>`
+  fills every byte of `buf`; `rand.next_u64(random) -> Result<u64,
+  rand.RandomError>` gives 8 bytes, the first the most significant.
+  `Err(Unavailable)` when the system gives none. Each performs `random`. A
+  generator with explicit state seeded from these bytes would be a value
+  with no effect; this version has none.
+- **[SOCK-1]** `Net` is the authority over the network of the host, at the
+  level of sockets (the author's requirement Y-9: protocols above sockets,
+  such as HTTP, are not part of the core or of the standard library).
+  `socket.udp(net)` and `socket.tcp(net) -> Result<socket.Socket,
+  socket.NetError>` open an IPv4 socket of datagrams or of a stream. Each
+  performs `net`. `NetError` is `PermissionDenied` or `Other(errno)`.
+- **[SOCK-2]** A `socket.Socket` is a capability derived from a `Net`
+  ([CAP-4]): a struct of the library with a private descriptor, which
+  moves; it is closed when it is destroyed, by a destructor that performs
+  `net` ([DROP-5]). Binding, connecting, sending and receiving are not part
+  of this version (`decisions/OPEN.md` #56).
+
 ## 8. The C boundary
 
 - **[ABI-1]** `extern fn name(…) -> T effects { ffi }` declares a C function
@@ -1541,8 +1682,11 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
 - **[ABI-3]** Reserved symbols, the same on every target ([TGT-2]), including
   a target that never uses a given name:
   - (a) the symbols of the hosted runtime — `main`, `write`, `_exit`,
-    `getenv`, and *(decision 0023)* the allocator's `malloc`, `realloc` and
-    `free` —, names starting with `yxy_rt_`, and names starting with `__`
+    `getenv`, *(decision 0023)* the allocator's `malloc`, `realloc` and
+    `free`, and *(decision 0026)* the C functions through which the hosted
+    runtime reaches the resources of the capabilities, `open`, `read`,
+    `close`, `clock_gettime`, `getentropy` and `socket` —, names starting
+    with `yxy_rt_`, and names starting with `__`
     (reserved for the C implementation, such as the stack probe
     `__chkstk_darwin` and the arithmetic helpers of 32-bit targets) cannot be
     `extern` or `export` symbols;
@@ -1600,7 +1744,10 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
   - `take` ([OWN-3]) has no meaning there, since only copy types cross,
     and is an error, as on any copy type; `inout` ([OWN-9]) cannot cross,
     since C cannot borrow a place of the caller exclusively;
-  - a capability (`Console`, `Mmio`) never crosses ([CON-1], [MMIO-2]);
+  - a capability (`Console`, `Mmio`, *(decision 0026)* `Files`, `Net`,
+    `Clock`, `Random`) never crosses ([CON-1], [MMIO-2], [CAP-2]): an
+    `export fn` called by C receives none, and so reaches no hosted
+    resource of the catalogue;
   - an address that foreign code gives is an integer: Yxy code reaches the
     memory behind it only through an `Mmio` handle created in an unsafe
     region whose reason states the obligation ([UNS-1], [MMIO-1]), and
@@ -1623,13 +1770,21 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
 
 ## 10. Entry point
 
-- **[MAIN-1]** `fn main()` takes no parameters, or *(experimental, decision
-  0015)* one parameter of type `Console`, `fn main(console: Console)` (any
-  name), which the runtime of a hosted program gives: the console of
-  standard output ([CON-1]). It returns `()` (exit status 0) or `u8` (the
-  exit status), and declares its effects like any function. How the other
-  capabilities (files, network, clock, randomness) reach `main` is future
-  work (`decisions/OPEN.md` #9).
+- **[MAIN-1]** `fn main()` takes no parameters, or *(experimental,
+  decisions 0015 and 0026)* parameters of the root capabilities, each type
+  at most once, in any order and with any names: `Console`, `Files`, `Net`,
+  `Clock`, `Random` (`fn main(console: Console, files: Files)`). The
+  runtime of a hosted program gives each parameter the root capability of
+  its type: the console of standard output ([CON-1]), the files under the
+  working directory ([FS-1]), the network ([SOCK-1]), the clocks
+  ([CLOCK-1]), the entropy of the system ([RAND-1]). This is where every
+  root capability is born ([CAP-2]): no other function creates one, so a
+  function reaches a hosted resource only with a capability that `main`
+  passed down to it. An `export fn` called by C, the other entry point that
+  [INIT-1] admits, receives no capability ([ABI-4]); a freestanding program
+  has none. `main` returns `()` (exit status 0) or `u8` (the exit status),
+  and declares its effects like any function, which its body checks as any
+  body ([EFF-3]).
 
 ## 11. Incomplete programs
 
@@ -1678,6 +1833,11 @@ character literals ([TEXT-13], [LEX-11]), the text
 operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
 types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
+*(decision 0026)* effects declared by libraries and effect names of
+domains (`http`, `db`), operations of `Files`, `Net`, `Clock` and `Random`
+other than the functions of their packages (file handles, directories,
+removal, standard input and error, the arguments and the environment of the
+process, sockets beyond opening and closing; `decisions/OPEN.md` #54–#56),
 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, *(decision 0018)* constants inside
 a function, constants of types other than the integers and `bool`, calls in
