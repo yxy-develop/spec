@@ -26,6 +26,16 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   bidirectional formatting
   characters U+061C, U+200E, U+200F, U+202A–U+202E and U+2066–U+2069; and
   U+FEFF anywhere but at the start.
+- **[LEX-3b]** *(experimental, decision 0027)* A comment whose text after
+  `//` starts with `/` and not with `//` (`/// text`), alone on its line, is
+  a **documentation comment**. A run of them, each on the line after the
+  previous one, documents what starts on the line after the last one: an
+  item, a field, a variant, or the package clause (the package); a blank
+  line or any other text in between ends the run, which then documents
+  nothing. Its text is each comment's after `///` and one space, joined by
+  line feeds, read as Markdown for people (paragraphs, code spans, fenced
+  code blocks), in which HTML is text, never markup. It is a comment: it
+  changes nothing of the program's meaning.
 
 ### 1.2 Identifiers and words
 
