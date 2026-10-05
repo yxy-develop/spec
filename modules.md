@@ -823,21 +823,49 @@ same inputs).
 
 ## Appendix: differences from Go (informative)
 
+Each row was checked against this draft and the compiler on 2026-10-05
+(rule identifiers in the last column; where the compiler implements less
+than the draft, the row says so). Rules that agree with Go — `vN` suffixes
+from major 2, majors 0 and 1 sharing one path, no relative imports, unused
+imports as errors, acyclic imports, `testdata` and names starting with `.` or
+`_` excluded — are not listed.
+
 | Topic | Go | This draft |
 |---|---|---|
-| Letters in paths | uppercase allowed, escaped in the module cache | lowercase ASCII only ([PATH-2]) |
+| Import declarations | `import "p"`, `import name "p"`, and the grouped form `import ( … )` | `import "p"` or `import "p" as name`, one per line; no grouped form ([IMP-1]; `syntax.md` §3) |
+| Blank and dot imports | `import _ "p"` runs a package's initialization only; `import . "p"` brings its exported names in unqualified | neither: importing has no effect, so `as _` is an error ([IMP-8]); there are no glob or single-item imports, and every name of another package is qualified ([IMP-6]); Go's spellings are syntax errors |
+| Exported names | a name is exported when it starts with an uppercase letter, struct fields included | an item is visible to other packages only when declared `pub`, whatever the case of its name ([VIS-1]); fields of a struct need their own `pub` ([VIS-2]; OPEN #28) |
+| Executable packages | `package main` with `func main`; a package named `main` is a command and cannot be imported | a package that defines `fn main` is executable and cannot be imported, whatever its clause ([PKG-8]); `main` is an ordinary package name, so a package named `main` without `fn main` is a library; `fn main` cannot be `pub` ([VIS-4]) |
 | Package name and path | independent | equal to the last element when that is an identifier ([PKG-3]) |
-| Requirements and hashes | `go.mod` and `go.sum` | `yxy.toml` and `yxy.lock`, which holds the whole closure ([LOCK-2]) |
+| Letters in paths | uppercase allowed, escaped in the module cache | lowercase ASCII only ([PATH-2]) |
+| Which modules a package may import from | any module of the build list that provides the package; since Go 1.17 the `go` command records each such module in `go.mod`, marked `// indirect` when not imported directly | the standard library, the importing package's own module, and the modules its module requires **directly** in its manifest; a module reached only through another dependency cannot be imported ([IMP-12]) |
+| Requirements inferred from imports | `go mod tidy` and `go get` add the module that provides an imported package | never: an import of a module that is not required is an error whose note names the step to take ([DEP-4], [IMP-12]) |
+| Commands that change requirements | `go get` adds, upgrades, downgrades and removes requirements; `go mod tidy` | `add`, `update` and `remove` are proposed ([DEP-1]) and not implemented; today a person edits `[require]` and runs `yxy lock`, which prints the change of the build list ([DEP-3]) |
+| Requirements and hashes | `go.mod` (requirements, `go`, `toolchain`, `replace`, `exclude`, `retract`) and `go.sum` (hashes of module content and `go.mod` files); the build list is computed again by each build | `yxy.toml` (`[module]`, `[require]`, `[replace]`, `[private]`, `[source]`; [MAN-1]) and `yxy.lock`, which holds the selection itself — the whole closure with revisions, content and manifest hashes, the versions read but not selected, and the resolver's identity ([LOCK-2]); builds use it exactly and never select ([DEP-5]) |
+| Module graph | since Go 1.17, the requirements of a dependency that declares `go 1.17` or higher are pruned to its immediate requirements | every manifest reached is read, and selection is over the whole transitive closure ([VER-5], [LOCK-2]) |
+| Versions in the manifest | `v1.4.2`; `+incompatible` for major 2 or higher of a repository without `go.mod` | `1.4.2`, without `v` (the tag is `v1.4.2`, [VER-2]); no build metadata ([VER-1]); a version without a manifest that declares its path is refused ([PATH-6], [MOD-1]) |
+| Untagged revisions | required through pseudo-versions (`v0.0.0-<time>-<commit>`) | cannot be required: a version is a tag; a replacement serves that need ([VER-2]; OPEN #25) |
+| Exclusions and retractions | `exclude` in the main module, `retract` by a module's authors | neither: requirements have no exclusions ([VER-5]); retractions are out of scope (§10) |
+| Replacements | of every version of a path, or of one version (`replace p v1.2.3 => …`) | of every version of a path ([MAN-4]) |
+| Replacements in dependencies | ignored | not applied, and reported: as a note of `yxy lock` today, and in the add and update diff ([MAN-4], [MAN-6], [DEP-3]) |
+| Locating a repository | known hosting sites, a `go-import` meta tag served at `https://<path>?go-get=1` for any other host, or a VCS suffix in the path; normally through the module proxy | derived from the path only for hosts whose repository root is known ([PATH-7]) — in this compiler `github.com` and `codeberg.org` (compiler implementation decision 0008); any other origin is named in the main manifest's `[source]` ([MAN-5]); no HTTP discovery (OPEN #22) |
+| Mirror and checksum database | a public proxy and checksum database by default | none by default; the service is optional and not Go-compatible ([NET-2]); the compiler has no mirror, proxy or index |
+| Private modules | the `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB` environment variables | path patterns in the main manifest's `[private]` (the draft adds the user's configuration, which the compiler does not read yet), applied before the first request; a private path is requested only from its own origin ([NET-3]) |
 | Builds and the network | a build may download required modules missing from the module cache | a build may download only what the lock pins, verified against the lock's content hash; `--offline` forbids any request ([DEP-9], [DEP-7]) |
-| Replacements in dependencies | ignored | not applied, and reported in the add/update diff ([MAN-4]) |
 | Toolchain version | since Go 1.21, a newer `go` line can make the `go` command download and run a newer toolchain | minimum checked, never downloaded ([MAN-7]) |
-| Mirror and checksum database | a public proxy and checksum database by default | none by default; the service is optional and not Go-compatible ([NET-2]) |
+| Workspaces | `go.work` | not defined; local development uses replacements by a directory ([MOD-4]; OPEN #29) |
+| Vendoring | a `vendor` directory, written by `go mod vendor` and used by default when present | none: `vendor` is an ordinary directory name, and a directory of `.yxy` files under it is a package like any other ([PKG-1], [PKG-2]); content comes from the local store or from a replacement by a directory ([DEP-8], [MAN-4]) |
+| Module-internal packages | a package under `internal/` can be imported only from the tree rooted at the parent of `internal` | none: `internal` is an ordinary directory name, and its packages can be imported like any other, from other modules too ([IMP-12]); visibility within a module is open (OPEN #28; §10) |
+| Build constraints | `//go:build` lines and `_<os>`/`_<arch>` file-name suffixes | none: every `.yxy` file of the directory belongs to the package on every target, whatever its name ([PKG-6], [BLD-4]; OPEN #26) |
+| Test files | `_test.go` files, compiled only by `go test`, and external `_test` packages | none in a package: a file named `x_test.yxy` is an ordinary file of its package ([PKG-6]); tests are programs of their own (compiler implementation decision 0011) |
+| Native code in dependencies | cgo compiles the C sources of packages of the build list | not supported: foreign code is linked only by an explicit option of the main build ([INIT-4]; OPEN #27) |
 | Package initialization | package variables and `init` functions | none ([INIT-1]) |
-| Module-internal packages | `internal/` directories | not defined (OPEN #28) |
 
 ## Sources
 
-Consulted on 2026-09-25; no text is copied.
+Consulted on 2026-09-25, and again on 2026-10-05 for the appendix (module
+graph pruning, `exclude` and `retract`, pseudo-versions, `+incompatible`,
+replacements of one version, `go.work`, vendoring); no text is copied.
 
 - Go Modules Reference — https://go.dev/ref/mod (modules and packages,
   module path rules, major version suffixes and the import compatibility

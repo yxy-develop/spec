@@ -942,7 +942,25 @@ and never by a trap.
   `match` has a fixed budget of work, the same on every target and machine
   ([TGT-2]); a `match` whose check needs more is an error, with a note to
   split it, and the compiler never runs away on it. The budget, and the unit
-  it is counted in, are the compiler's, documented with its diagnostics.
+  it is counted in, are the compiler's, documented with its diagnostics; it
+  never refuses a `match` that [MATCH-7] guarantees.
+- **[MATCH-7]** *(experimental, decision 0017, amended 2026-10-05)* The
+  guaranteed minimum of [MATCH-6]: a `match` that is otherwise valid
+  ([MATCH-1]–[MATCH-5] included) is never refused for the size of its
+  check when it is one of these two kinds of table. Below, a **simple test**
+  is an integer literal, `true`, `false`, `()`, or a variant (`E.V`, `None`,
+  `Some(p)`, `Ok(p)`, `Err(p)`) whose patterns inside, if any, are all `_`
+  or names; and a `match` may end with one arm that is `_` or a name.
+  1. **A table of one value**: every other arm is a simple test of the
+     matched value, at most 65 536 arms; when the matched type is an enum,
+     its variants hold at most 256 values in all.
+  2. **A table of two values**: the matched value is a struct of two fields,
+     every other arm is a struct pattern whose two fields are each an
+     integer literal, `true`, `false` or a variant without data (`E.V`,
+     `None`), at most 512 arms.
+
+  A compiler may accept larger tables; they, and every other `match`, are
+  accepted or refused by the budget of [MATCH-6] alone.
 - **[CELL-1]** A **cell** is a function body written as regions. In this version
   a cell is the whole body. Regions appear in this order, each optional:
 
