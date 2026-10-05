@@ -316,9 +316,14 @@ language. See `decisions/0025-generics.md`.
   signature of what is called, its type arguments and, for a dynamic call,
   the function type: (1) a function becomes a value of a function type only
   if the type lists every effect the function declares; (2) a dynamic call
-  performs exactly the effects of its function type, which the caller
-  declares ([EFF-3]); a function that only passes a function value on does
-  not; (3) a call of a generic function performs its declared effects and,
+  performs the effects of its function type and *(amended 2026-10-04)* the
+  **destruction effects** of the types of its `take` and `inout` parameters
+  (the function a value holds may destroy what it receives, also an
+  instantiation of a generic function whose type lists no such effect),
+  which the caller declares ([EFF-3]): the caller pays; in a generic body,
+  those that come from its own type parameters are its callers', as in
+  (3); a function that only passes a function value on performs none of
+  them; (3) a call of a generic function performs its declared effects and,
   for each type argument, the **destruction effects** of that type (those
   of the destructors destroying a value of it may run, [DROP-5]), which the
   caller declares whether or not the body destroys one; inside a generic
@@ -337,7 +342,18 @@ language. See `decisions/0025-generics.md`.
   program is at most 16 384. Both are counts of the program, the same on
   every target ([TGT-2]); instantiations are made in a fixed order (the
   order of the packages, items and calls in the source). An instantiated
-  type keeps the limits of written types ([GR-5], [STRUCT-9]).
+  type keeps the limits of written types, checked when it is made, before
+  anything names it: [STRUCT-9] for its values, and at most 256 types
+  inside one another as a type ([GR-5]); so does, in each instantiation,
+  the type of each variable a generic body declares ([STRUCT-9]).
+  *(amended 2026-10-04)* A type argument, determined or written, and an
+  instantiated type have a **size** of at most 32 768: the number of types
+  they write when written out, each name of a type, `Option`, `Result`,
+  array, view and function type counting one, with the type arguments of
+  the instantiations they name written out too; one more is an error where
+  the type argument is determined or the type made. The size bounds the growth of types through
+  instantiations (`f<T>` asking for `f<Option<fn(T, T) effects {}>>`),
+  which [STRUCT-9] does not bound (a function value is one component).
 - **[GEN-10]** *(boundaries)* An `extern fn`, an `export fn` and `main` have no
   type parameters, and a function type is not a type of the C boundary
   ([ABI-2]).
@@ -347,7 +363,12 @@ language. See `decisions/0025-generics.md`.
   their layout), the dispatch of each call (static, with the instantiation
   it names, or dynamic, with the function type and its effects), the
   functions each function takes as values, and `reaches_unsafe` and
-  `allocates` as upper bounds once a function is a value ([EFF-5]).
+  `allocates` as upper bounds once a function is a value ([EFF-5]): a
+  dynamic call in a generic body may run a function taken as a value of
+  any type its instantiations give its function type (a type parameter
+  stands for every type), and a generic body that may destroy a value of a
+  type parameter may run any destructor of the program; each instantiation
+  is reported with its own.
 - **[GEN-12]** `Option` and `Result` stay known to the compiler (their copy
   class, `?` and `require`, the expected type of `None`, `Ok` and `Err`, and
   text as their payload, [TEXT-10], are theirs by name), and have the layout
@@ -1280,10 +1301,11 @@ Both operands have the same integer type, taken from them or from context.
   matter: `@effect` grants nothing, and `@eval` may call declared effects.
   Across packages, an imported function's effects are those of its public
   signature (`modules.md` [VIS-5]). *(experimental, decision 0025)* A
-  dynamic call's effects are those of its function type, and a call of a
-  generic function adds the destruction effects of its type arguments
-  ([GEN-8]); a function becomes a value only of a function type that lists
-  its effects.
+  dynamic call's effects are those of its function type and the
+  destruction effects of the types of its `take` and `inout` parameters,
+  and a call of a generic function adds the destruction effects of its
+  type arguments ([GEN-8]); a function becomes a value only of a function
+  type that lists its effects.
 - **[EFF-4]** An `extern fn` must declare `ffi`. The effects of foreign code are
   a **trusted declaration**, not verified; foreign calls are a trust boundary
   and tools report them as such.
@@ -1325,7 +1347,7 @@ Both operands have the same integer type, taken from them or from context.
 | Phenomenon | Classification |
 |---|---|
 | call to a Yxy function | the callee's declared effects; for a generic one, also the destruction effects of its type arguments ([GEN-8]) |
-| dynamic call (a value of a function type) | the effects of its function type ([GEN-8]) |
+| dynamic call (a value of a function type) | the effects of its function type, and the destruction effects of the types of its `take` and `inout` parameters ([GEN-8]) |
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |

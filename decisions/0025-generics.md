@@ -5,7 +5,9 @@
   step 2 implements it (part 11), and did on 2026-10-04 (part 13, with its
   deviations). Every choice below is the orchestrator's, with the
   alternatives that follow; none is the author's.
-- Date: 2026-10-04
+- Date: 2026-10-04; amended 2026-10-04 (the self-check of step 2: the
+  amendment below, an orchestrator's choice for the author's review at the
+  next gate)
 - Origin: `decisions/OPEN.md` #5 (enum payloads, generics, traits; the part
   on payloads was closed by decision 0017); the master plan's row of
   TASK-20260926-047 and its §5 item 8 (E-2: the effect check is transitive
@@ -63,7 +65,7 @@ instantiated for 1, 16 and 256 distinct types. Measured on one host
 |---|---|---|---|---|
 | a call, instructions / cycles (256 types) | 20.51 / 2.61 | 26.52 / 4.17 | 17.71 / 2.70 | 27.34 / 3.74 |
 | compiling to an object, billions of instructions (1 / 16 / 256 types) | 0.85 / 1.56 / 17.37 | 0.85 / 0.96 / 2.60 | 0.45 / 0.94 / 6.35 | 0.45 / 0.54 / 1.91 |
-| code (`__text`) added per type, bytes | 141 | 70 | 243 | 89 |
+| code (`__text`) added per type, bytes | 141 | 69 | 243 | 89 |
 | compile instructions added per type | 64.8 M | 6.8 M | 23.1 M | 5.7 M |
 
 The last two rows are arithmetic on the measured values from 1 to 256
@@ -214,10 +216,12 @@ effect its caller does not declare:
    { console }`): the function is converted to the type; values of two
    different function types never are.
 2. **Callback, and every dynamic call** (E0600, widened within its class).
-   A call of a value of function type performs exactly the effects of its
-   type, which the caller declares, as [EFF-3] for a static call. A
-   function that takes a callback and calls it declares the callback's
-   effects; a function that only passes it on does not.
+   A call of a value of function type performs the effects of its type,
+   which the caller declares, as [EFF-3] for a static call, and *(amended
+   2026-10-04, below)* the destruction effects of the types of its `take`
+   and `inout` parameters. A function that takes a callback and calls it
+   declares the callback's effects; a function that only passes it on does
+   not.
 3. **Generic call** (E0600, widened within its class). A call of a generic
    function performs its declared effects and, for each type argument `A`,
    the **destruction effects** of `A`: the effects of the destructors that
@@ -275,7 +279,9 @@ offsets and tags of `Option` and `Result` on every target.
    The compiler visits instantiations in a fixed order (the order of
    packages, items and calls in the source), so the same program gets the
    same error at the same site everywhere. An instantiated type also keeps
-   the limits of written types ([GR-5], [STRUCT-9]). The bounds refuse
+   the limits of written types ([GR-5], [STRUCT-9]), and *(amended
+   2026-10-04, below)* a type argument and an instantiated type have a
+   size of at most 32 768 types written out (E0398). The bounds refuse
    runaway expansion, not measured programs: B5's proxies took 23–65 million
    compiler instructions per instantiation of a small function, so 16 384
    of them would take minutes in those compilers.
@@ -421,10 +427,19 @@ with its exact diagnostics) test per rule:
     `Stack<Logger>` destroyed in a function that declares `effects {}`
     (E0600, through the generic destructor);
   - **recursion**: a function that passes itself as a value and is called
-    through it, without declaring the effect of its type (E0600).
+    through it, without declaring the effect of its type (E0600);
+  - *(amendment of 2026-10-04)* **a dynamic call that gives a value
+    away**: a generic function made a value of `fn(take T)` (and of
+    `fn(inout T, take T)`) in a generic body, and called with a type whose
+    destructor performs `console`, through `take` and through `inout`,
+    from a function that declares `effects {}` (E0600 at the call).
 - **[GEN-9]**: polymorphic recursion (E0394, with the chain, the same on
   every target); a generated program with 16 385 instantiations (E0395) and
-  one with 16 384 (valid); a chain of depth 64 (valid) and 65 (E0394).
+  one with 16 384 (valid); a chain of depth 64 (valid) and 65 (E0394);
+  *(amendment of 2026-10-04)* types that grow through instantiations: a
+  type argument beyond the size (E0398) or the nesting (E0398), an
+  instantiated type and a variable of a generic body beyond [STRUCT-9]
+  (E0900), each refused in well under a second.
 - **[GEN-10]**: a generic `extern fn`, `export fn` and `main` (E0393).
 - **[GEN-11]**: the facts of a fixture derived by hand: instantiations with
   their type arguments, effects, `frame_bytes`, depth and requesting sites;
@@ -453,6 +468,7 @@ E039x; effects and capabilities, E061x):
 | E0395 | too many instantiations | [GEN-9] |
 | E0396 | unused type parameter | [GEN-1] |
 | E0397 | not a function value | [GEN-7] |
+| E0398 | type argument too large *(amendment of 2026-10-04)* | [GEN-9] |
 | E0614 | function value with effects beyond its type | [GEN-8] |
 
 By the rules of the codes (`docs/diagnostics.md`, "Codes and their
@@ -522,17 +538,89 @@ what the text left open:
   with no barrier like `black_box`, so at one type its call is resolved
   too. Measured on one host (`benchmarks/results/README.md`, "B5 results,
   step 2"): a dynamic call costs 25–28% more instructions per call than a
-  static one (the proxies' range), and each added type costs 1.75 ms of
-  build time with static dispatch against 0.46 ms with function values —
-  within the proxies' range, so nothing here asks to revisit the bounds or
-  the default (see "What could change it").
+  static one, at the low end of the proxies' 27–54% and partly below it;
+  each added type costs 1.75 ms of build time with static dispatch, between
+  the proxies' 1.43 (C++) and 4.90 ms (Rust), against 0.46 ms with
+  function values, a little above the proxies' 0.34–0.41 ms (corrected
+  2026-10-04: this paragraph said that both were within the proxies'
+  range). Neither is far from the proxies, so nothing here asks to revisit
+  the bounds or the default (see "What could change it").
+
+## Amendment (2026-10-04): the self-check of step 2
+
+The orchestrator's self-check of step 2 (control repository,
+`reviews/2026-10-04-phase8-generics-selfcheck.md`) found that a generic
+function could hide destruction effects behind a function value, and that
+types growing through instantiations were bounded by nothing but time.
+These choices are the orchestrator's, for the author's review at the next
+gate, as every choice of this decision.
+
+1. **The caller pays at a dynamic call** ([GEN-8] item 2; finding P47-1,
+   E-2). `mk<T>() -> fn(take T) effects {}` may return `sink<T>`, which
+   destroys its argument: in the generic body `T` has no destruction
+   effect of its own, so the conversion of item 1 lets it through, and
+   `mk<G>()` then hands a function that runs `G`'s destructor to code that
+   declares nothing. Item 2 now says that a dynamic call performs the
+   effects of its function type **and the destruction effects of the types
+   of its `take` and `inout` parameters** (the function a value holds may
+   destroy what it receives, and the old value of an `inout`), which the
+   caller declares (E0600 at the call, a note naming the parameter and the
+   destructor). In a generic body, those that come from its own type
+   parameters are its callers', as for a generic call (item 3), which pay
+   them for each type argument. A borrowed parameter adds nothing: the
+   callee cannot destroy it. Alternatives: refusing, in a generic body,
+   the conversion of a generic function to a function type whose
+   parameters it may destroy (it would refuse `sink` as a value of
+   `fn(take T)` even where `T` is always a copy type); making every
+   function type list the destruction effects of its parameters' types (a
+   type would change with its type arguments' destructors, and two
+   instantiations of one function type would differ). The rule keeps item
+   1 and the types unchanged and adds the cost where the call is written,
+   as item 3 does for a generic call; the facts report a dynamic call's
+   effects with them (`calls[].effects`).
+2. **The size of a type argument** ([GEN-9]; finding P47-4). [STRUCT-9]
+   bounds the values of a type, not the type: a function value is one
+   component, so `f<T>` asking for `f<Option<fn(T, T) effects {}>>` doubles
+   its type at each level, under the depth of 64, until the compiler runs
+   out of memory (12.4 GB in 120 s, measured by the self-check). A type
+   argument, determined or written, and an instantiated type now have a
+   **size** of at most 32 768: the types they write when written out (each
+   name of a type, `Option`, `Result`, array, view and function type
+   counting one, the type arguments of the instantiations they name
+   written out too). One more is E0398 (type argument too large), where
+   the type argument is determined (a call, a function value) or the type
+   made. An instantiated type keeps the limits of written types, checked
+   when it is made and before anything names it: [STRUCT-9] for its values
+   (E0900, as for a declared type) and 256 types inside one another
+   ([GR-5], E0398); and the type of each variable a generic body declares
+   keeps [STRUCT-9] in each instantiation (E0900 at the variable), as the
+   same type written in a function that is not generic would. 32 768 is
+   twice the components of [STRUCT-9], so a type of plain data that
+   doubles at each level (`Option<Pair<T, T>>`) reaches [STRUCT-9] first,
+   as the same types written by hand do; it is a count of the program, the
+   same on every target ([TGT-2]), and with it the names the compiler
+   makes for instantiations stay linear in the size of their arguments.
+3. **Facts and [UNS-4] through instantiations** (findings P47-2 and
+   P47-3, E-4; no rule changes). `reaches_unsafe` and `allocates` of a
+   generic function are upper bounds of those of its instantiations
+   ([GEN-11]): a dynamic call in a generic body may run a function taken
+   as a value of any type its instantiations give its function type (a
+   type parameter, in the call's type or in the value's, stands for every
+   type), and a generic body that may destroy a value of a type parameter
+   may run every destructor of the program; `instantiations[]` gains
+   `reaches_unsafe` and `allocates`, each instantiation's own. The
+   operands of `Mmio.at` in a function that is not generic are checked
+   ([UNS-4], E0624) against the instantiations their calls name, as their
+   twins that call functions that are not generic; an operand in a generic
+   body against the generic forms, an upper bound of every instantiation,
+   so that an instantiation adds no error of its own ([GEN-4]).
 
 ## Alternatives
 
 - **Dynamic dispatch by default** (one compiled body for every type
   argument, values passed boxed or with a dictionary of operations, as
   Java, OCaml or unspecialized Swift): one copy of code and no growth with
-  instantiations (B5: 70 and 89 bytes per type against 141 and 243), but a
+  instantiations (B5: 69 and 89 bytes per type against 141 and 243), but a
   call that is not inlined at every use of an operation of a type parameter
   (B5: 27–54% more instructions, 32–83% more cycles per call, in the best
   case), and boxing or dictionaries that the program did not write (M-2,
