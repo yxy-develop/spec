@@ -206,14 +206,15 @@ item        = [ "pub" ] ( enum_decl | struct_decl | fn_decl | const_decl ) ;
 
 qual_name   = IDENT [ "." IDENT ] ;             (* item, or import.item *)
 
-enum_decl   = "enum" IDENT "{" [ variant { ( "," | NL ) variant } [ "," ] ] "}" NL ;
+enum_decl   = "enum" IDENT [ type_params ] "{" [ variant { ( "," | NL ) variant } [ "," ] ] "}" NL ;
 variant     = IDENT [ "(" type { "," type } [ "," ] ")" ] ;    (* data: semantics.md [ENUM-1] *)
 
-struct_decl = "struct" IDENT "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
+struct_decl = "struct" IDENT [ type_params ] "{" [ field { ( "," | NL ) field } [ "," ] ] "}" NL ;
 field       = [ "pub" ] IDENT ":" type ;          (* modules.md [VIS-2], OPEN #28 *)
 
-fn_decl     = [ "export" | "extern" | "drop" ] "fn" IDENT "(" [ params ] ")" [ "->" type ]
+fn_decl     = [ "export" | "extern" | "drop" ] "fn" IDENT [ type_params ] "(" [ params ] ")" [ "->" type ]
               effects [ body ] NL ;   (* `drop`: decision 0021, a word only before `fn`, semantics.md [DROP-1] *)
+type_params = "<" IDENT { "," IDENT } [ "," ] ">" ;   (* decision 0025, semantics.md [GEN-1] *)
 const_decl  = "const" IDENT ":" type ":=" expr NL ;   (* decision 0018; semantics.md [CONST-1], [CONST-2] *)
 params      = param { "," param } [ "," ] ;
 param       = [ "take" | "inout" ] IDENT ":" type ;   (* decision 0020: words only before a name, semantics.md [OWN-3], [OWN-9] *)
@@ -248,7 +249,10 @@ type        = qual_name [ "<" type { "," type } ">" ]
             | "[" type ";" expr "]"                 (* the length: a constant expression, [CONST-5] *)
             | "&" "[" type "]"
             | "&" "mut" "[" type "]"                (* decision 0020, TASK-042 part: semantics.md [REF-6] *)
+            | "fn" "(" [ fn_param { "," fn_param } [ "," ] ] ")" [ "->" type ] effects
+                                                    (* decision 0025: semantics.md [GEN-7]; the effects clause on the same line *)
             | "(" ")" ;
+fn_param    = [ "take" | "inout" ] type ;           (* words only before a type here *)
 
 expr        = unary { binop unary } ;                (* see §4 *)
 unary       = ( "-" | "!" | "&" | "&" "mut" ) unary | postfix ;   (* `&mut`: [REF-6] *)
@@ -306,7 +310,17 @@ before decision 0017 they were refused (#33).
   with no argument after any operand but an import's name: `p.copy()`,
   `p.inner.copy()`, `a[i].copy()`, `make().copy()` (`semantics.md`
   [OWN-6]); `pkg.copy()` stays a call of the function `copy` of the import
-  `pkg`. Other method calls (`x.f()`) are not supported.
+  `pkg`. Other method calls (`x.f()`) are not supported. *(experimental,
+  decision 0025)* A local variable or a parameter of a function type is
+  called too, `f(x)`: a dynamic call (`semantics.md` [GEN-7]); a field of
+  function type is called through a local (`g := s.on_close`, then
+  `g(x)`), and `s.on_close(x)` stays a method call. A function named
+  without a call where a value is expected (`f`, `pkg.f`) is a function
+  value. A function that returns a function value writes the effects of
+  the result type first, on its line: `fn pick(b: bool) -> fn(u32) -> u32
+  effects {} effects {}`. Type arguments are never written in an
+  expression, so `<` after a name stays the comparison
+  (`semantics.md` [GEN-2]).
 - **[GR-2]** A cell occupies the whole function body. Region headers after
   ordinary statements, or inside nested blocks, are errors.
 - **[GR-3]** *(experimental)* `if` is a statement, not an expression.

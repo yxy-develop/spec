@@ -41,10 +41,15 @@ compiler's diagnostic codes are listed in the compiler repository
 | `&mut [T]` | a view of the elements of a `mut` array that may assign them *(experimental, decision 0020, TASK-042 part; [REF-6])* | parameters, and local variables declared with `&mut a` |
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]), and in an `Option` or a `Result` there ([TEXT-10]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
+| `T` (a type parameter) | a value of the type argument of an instantiation *(experimental, decision 0025; §2.3)* | inside its generic item only; a move type that may have a destructor ([GEN-5]) |
+| `fn(P1, take P2) -> R effects { e }` | a function of the program *(experimental, decision 0025, [GEN-7])* | anywhere a value type may appear, but the C boundary ([ABI-2]) |
 
 - **[TY-1]** *Value types* are `bool`, the integers, the floats *(decision
   0019)*, `()`, enums (also those whose variants hold data, §2.2), structs,
-  and `Option` and `Result` of value types. *(decision 0020)* A value of a
+  and `Option` and `Result` of value types; *(experimental, decision 0025)*
+  also the instantiations of generic structs and enums, the type
+  parameters of the item they are written in ([GEN-3]), and function types
+  ([GEN-7]). *(decision 0020)* A value of a
   copy type ([OWN-1]) is copied on assignment, when passed and when
   returned; a struct, an enum with data, and an `Option` or `Result` that
   holds one move ([OWN-2]) and are copied only by `.copy()` ([OWN-6]).
@@ -56,8 +61,11 @@ compiler's diagnostic codes are listed in the compiler repository
   same width on every target.
 - **[TY-3]** *(decision 0017)* A variant of an enum may hold data (§2.2); an
   enum has between 1 and 256 variants. `Option` and `Result` are known to the
-  compiler; user-defined generics do not exist yet. *(Before decision 0017,
-  variants carried no data.)*
+  compiler. *(experimental, decision 0025)* User-defined functions, structs
+  and enums may be generic (§2.3); `Option` and `Result` stay known to the
+  compiler, with the layout of a generic enum of the same shape ([GEN-12]).
+  *(Before decision 0017, variants carried no data; before decision 0025
+  user-defined generics did not exist.)*
 - **[TY-4]** There are **no implicit conversions**, and **no default integer
   type**. An integer literal takes the integer type expected by its context
   (annotation, parameter, the other operand, the return type…). With no
@@ -73,7 +81,9 @@ compiler's diagnostic codes are listed in the compiler repository
   never a float (`x: f64 := 1` is an error) and a float literal never an
   integer.
 - **[TY-5]** `None`, `Ok(…)` and `Err(…)` need an expected type. `Some(v)` can
-  take its type from `v`.
+  take its type from `v`. *(experimental, decision 0025)* This is the rule
+  of [GEN-2] for every generic enum: a variant takes the type arguments its
+  values do not determine from the expected type.
 - **[TY-6]** Arrays are created from literals, and *(decision 0020, arrays
   R2)* as the explicit copy of a named array, `b := a.copy()` ([OWN-6]).
   A whole array is never moved nor copied implicitly: `b := a` is an error,
@@ -92,8 +102,10 @@ compiler's diagnostic codes are listed in the compiler repository
   other than an array: an integer, `bool`, `()`, an enum, `Option`/`Result` of
   value types, or another struct. Arrays, slices and references cannot be
   fields in this version. Struct names are items ([PRG-2]); fields are not
-  names in scope and may repeat names used elsewhere. Structs have no generic
-  parameters in this version.
+  names in scope and may repeat names used elsewhere. *(experimental,
+  decision 0025)* A field may also have the type of a type parameter of its
+  struct or a function type, and a struct may be generic ([GEN-1]); before
+  decision 0025 structs had no generic parameters.
 - **[STRUCT-2]** A struct holds its fields inline, so no struct may contain
   itself — directly, inside `Option` or `Result`, or through other structs;
   such a struct would have infinite size and is an error.
@@ -173,7 +185,9 @@ compiler's diagnostic codes are listed in the compiler repository
   written with parentheses holds at least one value (`V()` is an error). The
   types are value types other than arrays, as for struct fields
   ([STRUCT-1]): integers, the floats *(decision 0019)*, `bool`, `()`, enums,
-  structs, `Option` and `Result`; slices, text and capabilities are not. Named fields
+  structs, `Option` and `Result`, *(experimental, decision 0025)* a type
+  parameter of a generic enum ([GEN-1]) and function types ([GEN-7]);
+  slices, text and capabilities are not. Named fields
   (`V { a: T }`) are not supported: a variant holds a struct for them. An
   enum mixes variants with and without data in any order. An enum that holds
   itself — directly, inside `Option` or `Result`, or through structs and
@@ -207,6 +221,161 @@ compiler's diagnostic codes are listed in the compiler repository
   the tag and the payload of the variant a value holds are written, and a
   `match` reads a payload only where the tag says that its variant is the one
   held.
+
+### 2.3 Generics and function values *(experimental, decision 0025)*
+
+A generic function, struct or enum is checked once, in its generic form,
+and compiled as one instantiation for each list of type arguments the
+program uses (static dispatch). A function type's values are the functions
+of the program; a call of one is the only dynamic dispatch of the
+language. See `decisions/0025-generics.md`.
+
+- **[GEN-1]** A function, a struct or an enum may declare **type
+  parameters** after its name: `fn swap<T>(inout a: T, inout b: T)
+  effects {}`, `struct Pair<A, B> { first: A, second: B }`, `enum
+  Either<A, B> { Left(A), Right(B) }`. A type parameter is a name of a type
+  inside its item and repeats no name in scope (another type parameter of
+  the item, an item of the package, an import of the file). Every type
+  parameter of a function appears in the type of a parameter or in the
+  result type, and every type parameter of a struct or an enum in a field or
+  the data of a variant; otherwise it is an error, since nothing could
+  determine it. Rules on structs and enums hold for their generic forms: a
+  generic struct that contains itself, with any type arguments, is
+  recursive ([STRUCT-2]).
+- **[GEN-2]** **Type arguments** are written in types (`Pair<u8, bool>`),
+  exactly as many as the item declares; a type that is not generic takes
+  none. In expressions they are never written: the type arguments of a
+  call, a struct literal, a variant or a function used as a value are
+  determined by unifying the declared types with the types of the
+  arguments, from left to right, and then the result with the expected
+  type, as `None` takes its type ([TY-5]). A literal has no type of its own
+  ([TY-4]): `id(1)` is determined only by an expected type. A type
+  parameter that neither determines is an error, fixed by writing the
+  expected type (`x: u8 := id(1)`). `<` after a name in an expression is the
+  comparison.
+- **[GEN-3]** A type argument is a type that may be the type of a struct
+  field: `bool`, the integers, the floats, `()`, an enum, a struct, an
+  instantiation of a generic struct or enum, a function type, a type
+  parameter of the item, and an `Option` or a `Result` of those. An array, a
+  view (`&[T]`, `&mut [T]`), text (also inside an `Option` or a `Result`) and
+  a capability (`Console`, `Mmio`) are not, written or determined: a value
+  of a type parameter can always be stored, moved and returned, and no
+  capability travels hidden in one ([CON-1], [MMIO-2]).
+- **[GEN-4]** A generic item is checked once, in its generic form, where a
+  type parameter is an opaque type: a value of it may be declared, moved,
+  borrowed, given to a parameter (borrowed, `take` or `inout`), returned,
+  stored in a field of a generic struct, in a variant, an `Option`, a
+  `Result` or an array literal, matched through those (`Some(x)`), and
+  viewed as an element of `&[T]`. No other operation applies to it: no
+  operator, `==`, `.copy()`, `[v; N]`, field, `.len`, `match` on it, call,
+  conversion; it is an error, in the generic body, whether or not the
+  program instantiates it. There are no constraints in this version. An
+  instantiation adds no error to those of the generic form, except the
+  bounds of [GEN-9].
+- **[GEN-5]** For the analysis of moves and destruction (§4.2, §4.3) a type
+  parameter is a **move type that may have a destructor**: every rule of
+  [OWN-2]–[OWN-10], [DROP-3], [DROP-4] and [DROP-6] holds in a generic body
+  for every instantiation, also when every instantiation of the program is
+  a copy type; nothing copies a value of a type parameter (`.copy()`, `[v;
+  N]`), and `take` and `inout` apply to it. An instantiation with a copy
+  type keeps the meaning (moving copies, destroying does nothing); one with
+  a type that has a destructor destroys its values where the generic
+  body's analysis placed the destructions, with no flag at run time. A
+  generic struct and a generic enum with data are move types ([OWN-1]),
+  whatever their type arguments. A destructor of a generic struct has
+  exactly the struct's type parameters: `drop fn free<T>(v: Stack<T>)
+  effects {} { … }` ([DROP-1]).
+- **[GEN-6]** **Static dispatch, always**: every use of a generic function
+  or type names an **instantiation**, the item with its type arguments
+  substituted, compiled as code and laid out as a type of its own
+  ([STRUCT-8], [ENUM-5]). An instantiation is identified by its item and its
+  type arguments, and the program has one of each, whatever number of
+  packages asks for it. An instantiation has no hidden dictionary, box,
+  allocation or indirect call. The checks of a generic body are those of
+  each instantiation, at one site each ([TRAP-3]).
+- **[GEN-7]** A **function type** is written `fn(P1, P2) -> R effects { e }`,
+  each parameter a type with its mode (`take T`, `inout T`, or borrowed),
+  the result optional (`()`), and the effects clause mandatory, on the same
+  line. Two function types are the same type when their modes, types,
+  results and sets of effects are equal; there is no subtyping between
+  them. A **function value** is a function of the program named where a
+  value is expected (`f`, `pkg.f`), with no call; its type is its
+  signature, or the expected function type it converts to ([GEN-8]); a
+  generic function becomes a value of the instantiation the expected type
+  determines. An `extern` or `export` function, a destructor, a variant, an
+  operation of the language (§6.4–§6.6), an operation of a capability and
+  `.copy` are not function values. There are no closures: a function value
+  captures nothing. A function value is a copy type ([OWN-1]), one code
+  address, which may be a parameter, a local, a field, an element, a
+  variant's data or in an `Option` or a `Result`; it has no `==` and no
+  `match`, and does not cross the C boundary ([ABI-2]). A **dynamic call**
+  is a call of a local or a parameter of function type, `f(x)` ([GR-1]); a
+  field is called through a local (`g := s.on_close`, then `g(x)`). It is
+  the only dynamic dispatch of the language, and the tools report it.
+- **[GEN-8]** *(effects, E-2)* The effects of every call are known from the
+  signature of what is called, its type arguments and, for a dynamic call,
+  the function type: (1) a function becomes a value of a function type only
+  if the type lists every effect the function declares; (2) a dynamic call
+  performs the effects of its function type and *(amended 2026-10-04)* the
+  **destruction effects** of the types of its `take` and `inout` parameters
+  (the function a value holds may destroy what it receives, also an
+  instantiation of a generic function whose type lists no such effect),
+  which the caller declares ([EFF-3]): the caller pays; in a generic body,
+  those that come from its own type parameters are its callers', as in
+  (3); a function that only passes a function value on performs none of
+  them; (3) a call of a generic function performs its declared effects and,
+  for each type argument, the **destruction effects** of that type (those
+  of the destructors destroying a value of it may run, [DROP-5]), which the
+  caller declares whether or not the body destroys one; inside a generic
+  body those that come from its own type parameters are its callers', and
+  those of the concrete types in a type argument the body declares; the
+  destructor of a generic struct is such a call, so destroying a
+  `Stack<A>` performs the destruction effects of `A` too; (4) recursion
+  holds through declarations, also through function values: every check
+  uses declared effects and the effects of function types, never an
+  inferred set.
+- **[GEN-9]** *(bounds)* The depth of a chain of instantiations, each asked
+  for by the one before from a function that is not generic, is at most
+  64; one more is an error at the call that asks for it, with the chain
+  (so polymorphic recursion, `f<T>` calling `f<Option<T>>`, is refused).
+  The number of distinct instantiations of functions and types in a
+  program is at most 16 384. Both are counts of the program, the same on
+  every target ([TGT-2]); instantiations are made in a fixed order (the
+  order of the packages, items and calls in the source). An instantiated
+  type keeps the limits of written types, checked when it is made, before
+  anything names it: [STRUCT-9] for its values, and at most 256 types
+  inside one another as a type ([GR-5]); so does, in each instantiation,
+  the type of each variable a generic body declares ([STRUCT-9]).
+  *(amended 2026-10-04)* A type argument, determined or written, and an
+  instantiated type have a **size** of at most 32 768: the number of types
+  they write when written out, each name of a type, `Option`, `Result`,
+  array, view and function type counting one, with the type arguments of
+  the instantiations they name written out too; one more is an error where
+  the type argument is determined or the type made. The size bounds the growth of types through
+  instantiations (`f<T>` asking for `f<Option<fn(T, T) effects {}>>`),
+  which [STRUCT-9] does not bound (a function value is one component).
+- **[GEN-10]** *(boundaries)* An `extern fn`, an `export fn` and `main` have no
+  type parameters, and a function type is not a type of the C boundary
+  ([ABI-2]).
+- **[GEN-11]** *(facts)* `yxy inspect` reports each item's type parameters,
+  the instantiations of generic functions (their type arguments, effects,
+  costs, depth and the sites that ask for them) and of generic types (with
+  their layout), the dispatch of each call (static, with the instantiation
+  it names, or dynamic, with the function type and its effects), the
+  functions each function takes as values, and `reaches_unsafe` and
+  `allocates` as upper bounds once a function is a value ([EFF-5]): a
+  dynamic call in a generic body may run a function taken as a value of
+  any type its instantiations give its function type (a type parameter
+  stands for every type), and a generic body that may destroy a value of a
+  type parameter may run any destructor of the program; each instantiation
+  is reported with its own.
+- **[GEN-12]** `Option` and `Result` stay known to the compiler (their copy
+  class, `?` and `require`, the expected type of `None`, `Ok` and `Err`, and
+  text as their payload, [TEXT-10], are theirs by name), and have the layout
+  of `enum Option<T> { None, Some(T) }` and `enum Result<T, E> { Ok(T),
+  Err(E) }`: a user enum of that shape has, for every type argument, their
+  sizes, alignments, offsets and tags on every target. Moving them to `core`
+  (OPEN #52) is left for later.
 
 ## 3. Names, declarations and mutability
 
@@ -485,9 +654,11 @@ come with allocation (TASK-20260926-043, -044).
 - **[OWN-1]** *(classes)* The **copy types** are `bool`, the integers, the
   floats, `()`, enums without data, `Option` and `Result` whose type
   arguments are all copy types, `&[T]`, `&str` and `Console` (copying a
-  capability copies the authority, [CON-1]). The **move types** are every
+  capability copies the authority, [CON-1]), *(experimental, decision 0025)*
+  and function types ([GEN-7]). The **move types** are every
   struct, every enum with a variant that holds data, `Option` and `Result`
-  with a move type as an argument, and every array. No struct and no enum
+  with a move type as an argument, and every array; *(decision 0025)* in a
+  generic body, a type parameter ([GEN-5]). No struct and no enum
   with data is a copy type; which types move depends on their declaration
   only ([OWN-8]). *(TASK-042 part)* A view `&mut [T]` is neither: it is
   never copied or moved ([REF-6]).
@@ -631,7 +802,10 @@ and never by a trap.
   destructor reads the value, [OWN-3]), no result, not `pub`, not `extern`
   or `export`; at most one for each struct. It runs when a value of `S` is
   destroyed and is never called by name. `drop` is a word only before `fn`
-  at the start of an item, so a name `drop` stays usable.
+  at the start of an item, so a name `drop` stays usable. *(experimental,
+  decision 0025)* The destructor of a generic struct has exactly its type
+  parameters, `drop fn free<T>(v: Stack<T>)` ([GEN-5]), and each
+  instantiation of the struct is destroyed by the instantiation of it.
 - **[DROP-2]** *(types with a destructor)* A type **has a destructor** when
   it is a struct with a destructor, or a struct, an enum with data, an
   `Option`, a `Result` or an array that holds a value of such a type.
@@ -670,7 +844,11 @@ and never by a trap.
 - **[DROP-5]** *(effects, E-2)* The effects of a destructor are effects of
   every function in which a value of its type, or of a type that holds it,
   is destroyed: that function declares them, as for a call ([EFF-3]), and
-  its callers in turn.
+  its callers in turn. *(experimental, decision 0025)* Destroying an
+  instantiation of a generic struct with a destructor runs the
+  instantiation of the generic destructor, a call of a generic function:
+  its effects include the destruction effects of the type arguments
+  ([GEN-8] item 3).
 - **[DROP-6]** *(an owner for every value)* A new value of a type that has a
   destructor (a call's result, a literal) is in a position that moves it
   ([OWN-2]) or is discarded with `_ :=`; in a position that does not own it
@@ -1122,7 +1300,12 @@ Both operands have the same integer type, taken from them or from context.
   holds through recursion. Where the call appears (which region) does not
   matter: `@effect` grants nothing, and `@eval` may call declared effects.
   Across packages, an imported function's effects are those of its public
-  signature (`modules.md` [VIS-5]).
+  signature (`modules.md` [VIS-5]). *(experimental, decision 0025)* A
+  dynamic call's effects are those of its function type and the
+  destruction effects of the types of its `take` and `inout` parameters,
+  and a call of a generic function adds the destruction effects of its
+  type arguments ([GEN-8]); a function becomes a value only of a function
+  type that lists its effects.
 - **[EFF-4]** An `extern fn` must declare `ffi`. The effects of foreign code are
   a **trusted declaration**, not verified; foreign calls are a trust boundary
   and tools report them as such.
@@ -1135,7 +1318,10 @@ Both operands have the same integer type, taken from them or from context.
   and for the Yxy side of every call. An unsafe region is a local contract,
   not an effect: it is not in a function's signature, and tools find it
   through the facts of `yxy inspect` (`reaches_unsafe`), computed over the
-  call graph, which is complete while every call is static. *(Before
+  call graph, which is complete while every call is static; *(experimental,
+  decision 0025)* once a function is taken as a value, a dynamic call may
+  reach every function of the program taken as a value of its function
+  type, and the facts are an upper bound ([GEN-11]). *(Before
   decision 0024 there was no `unsafe` construct, and the guarantees held for
   code whose effects exclude `ffi`.)* *(experimental)* These guarantees assume that the
   foreign side keeps the contract of the boundary: foreign callers of an
@@ -1160,7 +1346,8 @@ Both operands have the same integer type, taken from them or from context.
 
 | Phenomenon | Classification |
 |---|---|
-| call to a Yxy function | the callee's declared effects |
+| call to a Yxy function | the callee's declared effects; for a generic one, also the destruction effects of its type arguments ([GEN-8]) |
+| dynamic call (a value of a function type) | the effects of its function type, and the destruction effects of the types of its `take` and `inout` parameters ([GEN-8]) |
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |
@@ -1338,7 +1525,9 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
   the boundary (and `()` as a return type); `f32` is C's `float` and `f64`
   C's `double`, on every target. Slices, enums (with or without data),
   structs, `Option` and `Result` do not, because their layout is not a
-  stable ABI ([STRUCT-8], [ENUM-5]). Integers and `bool` narrower than
+  stable ABI ([STRUCT-8], [ENUM-5]); *(experimental, decision 0025)* nor do
+  function types (a function value is never given to or received from C)
+  and type parameters ([GEN-10]). Integers and `bool` narrower than
   32 bits follow the C ABI of each target, which differ: some make the caller
   extend them to 32 bits (Apple's ARM64 ABI), some leave the bits beyond the
   value's width unspecified (the generic AAPCS64). When Yxy passes such a
@@ -1460,8 +1649,10 @@ once at an unsafe boundary, never through an integer (audit §12b.1, row
 Rejected with a diagnostic, never ignored: `when`, named fields in enum
 variants (`V { a: T }`), recursive enums, `==` on enums with data, rest
 patterns (`..`) and field shorthand in patterns, destructuring declarations
-(`P { x: a } := p`), user-defined generics, traits, closures, function
-values, method calls (other than the operations of a `Console`, [CON-2],
+(`P { x: a } := p`), traits, constraints on type parameters, type
+arguments written in expressions, effect parameters, closures, subtyping
+between function types, function values at the C boundary (decision 0025),
+method calls (other than the operations of a `Console`, [CON-2],
 of an `Mmio`, [MMIO-3], and `.copy()`, [OWN-6]), owned resources other than the owned string
 (decision 0023), an implicit copy of a struct
 or of an enum with data (decision 0020, [OWN-1]), `inout` on a parameter
@@ -1490,9 +1681,9 @@ types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, *(decision 0018)* constants inside
 a function, constants of types other than the integers and `bool`, calls in
-constant expressions other than `widen` (`const fn`), constants as patterns, generic enums, enums
-without variants and enums with more than 256 variants; for structs: generic
-structs, structs without fields, arrays and slices as fields, recursive
+constant expressions other than `widen` (`const fn`), constants as patterns, enums
+without variants and enums with more than 256 variants; for structs: structs
+without fields, arrays and slices as fields, recursive
 structs, structs beyond [STRUCT-9], equality, methods, field
 shorthand, update syntax, fields of array elements or temporaries as assignment
 targets, and structs at the C boundary.
