@@ -119,7 +119,9 @@ quietness of NaN specified, and fast-math never by default.
    payload of a NaN result are **not specified**: they differ between
    targets and between the constant folder and the hardware (Context), and
    no operation of this version can observe them (there is no access to the
-   bits and no printing of floats). A signaling NaN can only come from
+   bits and no printing of floats; *since decision 0028, `to_bits` gives every
+   NaN as the canonical NaN and printing writes `nan`, so they stay
+   unobserved*). A signaling NaN can only come from
    foreign code; with a signaling operand an operation gives a NaN, quiet or
    not (not specified, like the sign and the payload), `-x` keeps the
    quietness of `x`, and on i686 the C ABI's x87 return may make it quiet.
@@ -191,7 +193,11 @@ quietness of NaN specified, and fast-math never by default.
     ([ABI-3] (b)); `fma` is a prelude name, so neither an `extern` nor an
     `export` function can take it.
 15. **Printing** is not in this version: `Console` has no float operation
-    (`OPEN.md` #8). A program prints an integer conversion.
+    (`OPEN.md` #8). A program prints an integer conversion. *(Amended on
+    2026-10-05 by decision 0028, after the author's answer to Q1 below:
+    `console.print_f32` and `console.print_f64` print the shortest decimal
+    that reads back as the value ([FLT-11]), and `to_bits` and `from_bits`
+    give and read the bits, every NaN as the canonical NaN ([FLT-12]).)*
 
 ### Names now reserved
 
@@ -229,6 +235,8 @@ author reviews them at the gate of 0.1.
   work on text formatting (#7). The alternative is to bring forward only
   the printing (the shortest text that reads back as the same value, `-0`,
   `inf`, a canonical NaN) with a `to_bits` that canonicalizes NaN.
+  *(Answered by the author at the gate of 0.1: the alternative, before the
+  opening; carried out by decision 0028.)*
 - **Q2. No default float type**, and an integer literal is never a float
   (item 2). Accepting an exact integer literal where a float is expected
   could come later without breaking programs.
@@ -345,8 +353,8 @@ author reviews them at the gate of 0.1.
   (dot product and sum of 10^7 floats, strict, with `fma` and reassociated,
   C as the ceiling).
 - Access to the bits of a float (`to_bits`, `from_bits`), which must
-  canonicalize NaN or document its bits; printing floats; hexadecimal
-  literals.
+  canonicalize NaN or document its bits; printing floats *(both done by
+  decision 0028)*; hexadecimal literals.
 - The math functions (`sqrt`, `abs`, `floor`, `round`, `min`, `max`,
   `copysign`, a NaN test) and constants (infinity, NaN, the largest value,
   epsilon).

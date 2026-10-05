@@ -471,9 +471,10 @@ language. See `decisions/0025-generics.md`.
   itself, since a warning decides nothing. An operation that reads a
   variable is not computed at compile time and gets no warning, even when
   it always traps (`x / 0`). An integer constant expression inside
-  `to_float`, `fma` or the values of a variant ([FLT-6], [FLT-7], [ENUM-2])
-  is one like any other; the operand of `truncate_to_int` ([FLT-8]) is a
-  float, never a constant expression, so its trap gets no warning. A
+  `to_float`, `fma`, `from_bits` or the values of a variant ([FLT-6],
+  [FLT-7], [FLT-12], [ENUM-2]) is one like any other; the operand of
+  `truncate_to_int` ([FLT-8]) is a float, never a constant expression, so
+  its trap gets no warning. A
   warning never makes a program invalid and never changes what it does; it
   may depend on the target ([TGT-2]).
 
@@ -1225,7 +1226,7 @@ Both operands have the same integer type, taken from them or from context.
   narrowing conversion). `as` is reserved. Floats convert with the
   operations of §6.6 ([FLT-7], [FLT-8]).
 
-### 6.6 Floating point *(experimental, decision 0019)*
+### 6.6 Floating point *(experimental, decision 0019; text and bits, decision 0028)*
 
 - **[FLT-1]** `f32` and `f64` are IEEE 754 binary32 and binary64, the same on
   every target. They are value types ([TY-1]): locals, parameters, results,
@@ -1297,10 +1298,49 @@ Both operands have the same integer type, taken from them or from context.
   passing a NaN through the C boundary may make it quiet. The **sign and
   payload of a NaN are not specified** either (they differ between targets
   and between a value computed when compiling and one computed when
-  running), and no operation of this version observes them.
+  running), and no operation observes them: *(decision 0028)* `to_bits`
+  gives every NaN as the canonical NaN, `from_bits` makes only that one,
+  and the text of every NaN is `nan` ([FLT-11], [FLT-12]).
 - **[FLT-10]** A float literal is never a pattern: `match` arms of floats are
   `_` or a binding, and a `match` on a float needs one of them to cover every
   value ([MATCH-1]).
+- **[FLT-11]** *(experimental, decision 0028)* The **text** of a float `x`
+  of type `T`, which `console.print_f32` and `console.print_f64` write
+  ([CON-2]), is fixed exactly, the same on every target and in every
+  engine:
+  - For `x` finite and not zero, the decimal is the one, among the decimals
+    `d·10^k` that read back as `|x|` (rounded to nearest, ties to even, in
+    `T`, as a literal is, [FLT-2]), with the fewest significant digits;
+    among those the closest to `|x|`; of two equally close, the one whose
+    last digit is even. An `f32` is never widened to `f64` first. Its
+    significant digits are `d1 d2 … dn` (the first and the last not zero),
+    and `e` is the exponent of the first: the decimal is
+    `d1.d2…dn × 10^e`.
+  - When `-4 <= e <= 15` it is written **plain**: for `e >= 0` the first
+    `e + 1` digits (zeros after the digits when `n <= e`), `.`, then the
+    digits left or `0`; for `e < 0`, `0.`, `-e - 1` zeros, the digits.
+    Otherwise **scientific**: `d1`, `.`, `d2…dn` or `0` when `n = 1`, `e`,
+    and the exponent in decimal, `-` before a negative one, no `+`, no
+    leading zeros.
+  - A value whose sign bit is set starts with `-`, zero and infinity
+    included. Zero is `0.0` or `-0.0`, the infinities `inf` and `-inf`, and
+    every NaN `nan`, whatever its sign and payload ([FLT-9]).
+  So `1.5`, `0.1`, `100.0`, `1000000000000000.0`, `1.0e16`, `0.0001`,
+  `1.0e-5`, `5.0e-324`, `1.7976931348623157e308`, `3.4028235e38` (`f32`);
+  `0.1 + 0.2` is `0.30000000000000004` in `f64` and `0.3` in `f32`. Every
+  finite text is a float literal ([LEX-19], negated by its `-`) whose value
+  in `T` is `x`.
+- **[FLT-12]** *(experimental, decision 0028)* `to_bits(x)` gives the IEEE
+  754 encoding of the float `x`, a `u32` for an `f32` and a `u64` for an
+  `f64`; every NaN gives the **canonical NaN**, the quiet NaN of sign 0 and
+  payload 0 (`0x7fc00000`, `0x7ff8000000000000`). `from_bits(b)` gives the
+  float whose encoding is `b`, an `f32` for a `u32` and an `f64` for a
+  `u64`, the encoding of a NaN giving the canonical NaN. The float type of
+  `to_bits` is its operand's (for a literal, the one whose bits the context
+  expects); that of `from_bits` is the context's, whose bits its operand
+  must then be, or else its operand's; with neither it is an error
+  ([TY-4]). Neither traps, and `from_bits(to_bits(x))` is `x`, bit for bit,
+  for every `x` that is not NaN.
 
 ## 7. Effects
 
@@ -1418,7 +1458,10 @@ of §7.5.
   `console.print(text: &str)` writes the bytes of the text and nothing else
   (no line break); `console.print_u64(value: u64)` and
   `console.print_i64(value: i64)` write the value in decimal, `-` before a
-  negative one, with no padding. Each returns `()`. `Console` has no other
+  negative one, with no padding; *(experimental, decision 0028)*
+  `console.print_f32(value: f32)` and `console.print_f64(value: f64)` write
+  the text of the float, the shortest decimal that reads back as it in its
+  own type ([FLT-11]). Each returns `()`. `Console` has no other
   operation.
 - **[CON-3]** Each operation performs the effect `console`: the function that
   calls one must declare it, and [EFF-3] carries it to every caller.
@@ -1858,7 +1901,9 @@ string ([STR-4]), grapheme clusters ([TEXT-14]), a `char` type and
 character literals ([TEXT-13], [LEX-11]), the text
 operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point
-types other than `f32` and `f64`, printing floats (`decisions/OPEN.md` #8),
+types other than `f32` and `f64`, *(decision 0028)* floats written with a
+precision, a width or a form the program chooses and floats read from text
+(`decisions/OPEN.md` #7, #8),
 *(decision 0026)* effects declared by libraries and effect names of
 domains (`http`, `db`), operations of `Files`, `Net`, `Clock` and `Random`
 other than the functions of their packages (file handles, directories,
