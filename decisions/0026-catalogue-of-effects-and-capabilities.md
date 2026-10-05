@@ -89,8 +89,8 @@ caller must exclude it, Q4 the resource reached matters).
 |---|---|---|---|---|---|
 | console | `console` | `Console`: root, standard output; derived, a console in memory (`capture.text`) | none returned: a write the stream refuses traps (T0005), documented ([CON-4]) | every byte written, in order, unbuffered ([CON-4]) | no, no, yes, yes |
 | files | `fs` | `Files`: root, the files under the working directory | `fs.FsError` (`NotFound`, `PermissionDenied`, `IsDirectory`, `InvalidPath`, `TooLarge`, `Other(errno)`) in a `Result` | a path is relative, under the directory, checked before the operating system sees it ([FS-2]); `write` writes every byte or fails; `read` fills from the start or says `TooLarge` ([FS-3]) | no, no, yes, yes |
-| network | `net` | `Net`: root, the host's network at the level of sockets; derived, `socket.Socket`, one socket | `socket.NetError` (`PermissionDenied`, `Other(errno)`) | sockets only, IPv4, UDP and TCP (Y-9); a `Socket` is closed when it is destroyed ([SOCK-2]) | no, no, yes, yes |
-| clock | `clock` | `Clock`: root, the clocks of the host | `time.ClockError` (`Unavailable`) | the monotonic clock never goes back; the wall clock is nanoseconds since 1970 UTC ([CLOCK-1]) | no, no, yes, yes |
+| network | `net` | `Net`: root, the host's network at the level of sockets; derived, `socket.Socket`, one socket | `socket.NetError` (`PermissionDenied`, `Other(errno)`) | sockets only, IPv4, UDP and TCP (Y-9); a `Socket` is opened close-on-exec ([SOCK-1]) and closed when it is destroyed ([SOCK-2]) | no, no, yes, yes |
+| clock | `clock` | `Clock`: root, the clocks of the host | `time.ClockError` (`Unavailable`) | the monotonic clock never goes back; the wall clock is nanoseconds since 1970 UTC, and fails after 2262 (an `i64` of nanoseconds) or, where C's `time_t` has 32 bits (i686 Linux), outside 1970-01-01 to 2038-01-19 03:14:07 UTC ([CLOCK-1]) | no, no, yes, yes |
 | randomness | `random` | `Random`: root, the entropy of the operating system | `rand.RandomError` (`Unavailable`) | every byte asked for comes from the operating system's entropy, or the call fails ([RAND-1]) | no, no, yes, yes |
 
 `ffi` is an effect with no capability (above). `Mmio` (decision 0024) is a
@@ -145,8 +145,11 @@ resource, and cannot make one (E0611, part 4).
   from it ([CAP-4]). The compiler's test reads the facts of `yxy inspect
   --json` of a program that imports every package of `std` and finds zero
   violations. The operations of the hosted runtime that the library calls
-  take the capability too, so no code of the library reaches a resource
-  without one.
+  take the capability too, or a descriptor held by a capability derived
+  from it (`socket_close`, called by the destructor of a `socket.Socket`,
+  takes the socket's descriptor, and the facts name `std/socket.Socket` as
+  its capability), so no code of the library reaches a resource without
+  one.
 - **(c)** Root capabilities are born only in `main` ([CAP-2], [MAIN-1],
   rewritten without "future work"): the runtime of a hosted program gives
   `main` one value of each root capability its parameters name, and no
@@ -170,16 +173,19 @@ package path of the library names such a domain (`fail/domain_effects` for
 ### 6. Facts (gate item 5; §12b.1, task 5 (e))
 
 `yxy inspect --json` gives, for each function, its declared effects
-(`effects.declared`, unchanged) and, new, `capabilities`: each parameter
-that holds a capability, with the capability, whether it is a root one, and
-the effect its operations perform. `capability_calls` lists the operations
-of the hosted runtime that the library performs, with their effects. The
+(`effects.declared`, unchanged) and, new, `capabilities`: each capability
+its parameters hold, the parameter itself or a part of it (a field, an
+element, the data of a variant), with its path, the capability, whether it
+is a root one, and the effect its operations perform. `capability_calls`
+lists the operations of the hosted runtime that the library performs, with
+the capability each takes and their effects. The
 `limits` entry `effects` says what `effects {}` means, in the sentence of
 [EFF-1], and that the declared effects are an upper bound of what a
 function and everything it calls may perform (§12b.1, task 5 (e)); the
-compiler's test checks over the corpus that the effects of every call,
-operation of a capability and destruction of a function are within its
-declared effects.
+compiler's test checks over the corpus that the effects of every call and
+operation of a capability of a function, and those of every destructor its
+destructions may run (a destruction names destructors, whose effects are
+their own declared ones), are within its declared effects.
 
 ### 7. E-1 (gate item 7)
 
@@ -247,8 +253,9 @@ capabilities, prelude types given to `main`; the effects `fs`, `net`,
 `clock` and `random`; the packages `std/fs`, `std/socket`, `std/time`,
 `std/rand` and `std/capture`, whose operations reach the C library through
 the hosted runtime (its operations are internal to the library, take the
-capability and perform its effect, and their C functions are reserved
-symbols, [ABI-3] (a)); the console in memory ([CON-5]); E0615; the facts;
+capability, or a descriptor held by a capability derived from it, and
+perform its effect, and their C functions are reserved symbols, [ABI-3]
+(a); a socket is opened close-on-exec, as a file is); the console in memory ([CON-5]); E0615; the facts;
 the tests named above, in the three engines (the reference evaluator calls
 the same C functions).
 

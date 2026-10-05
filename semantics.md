@@ -1596,7 +1596,9 @@ its failure and its contract (part 2).
   performs an effect of the catalogue receives, as a parameter, a
   capability of that effect, a root one or one derived from it. The
   operations of the hosted runtime that the library calls take the
-  capability too.
+  capability too, or a descriptor held by a capability derived from it
+  (the socket's, which the destructor of a `socket.Socket` closes), so
+  that no code of the library reaches a resource without one.
 - **[CAP-6]** A failure of an operation on files, the network, a clock or
   the entropy is a **value**: the operation returns a `Result` whose error
   is an enum of its package, and never traps (M-4: none is presented as
@@ -1634,8 +1636,12 @@ its failure and its contract (part 2).
   never goes back; `time.wall_ns(clock) -> Result<i64, time.ClockError>`
   the wall clock, in nanoseconds since 1970-01-01 00:00:00 UTC, which may go
   back when the system's time is set. `Err(Unavailable)` when the system
-  gives no time or it does not fit in an `i64` of nanoseconds. Each performs
-  `clock`.
+  gives no time or it does not fit in an `i64` of nanoseconds (after the
+  year 2262); on a target whose C `time_t` has 32 bits (i686 Linux), also
+  when its seconds are negative or do not fit in it (a C library may wrap
+  them), so that there the wall clock is read
+  only from 1970-01-01 to 2038-01-19 03:14:07 UTC and fails outside, never
+  wrapped. Each performs `clock`.
 - **[RAND-1]** `Random` is the authority to draw entropy from the operating
   system. `rand.fill(random, buf: &mut [u8]) -> Result<(), rand.RandomError>`
   fills every byte of `buf`; `rand.next_u64(random) -> Result<u64,
@@ -1647,8 +1653,10 @@ its failure and its contract (part 2).
   level of sockets (the author's requirement Y-9: protocols above sockets,
   such as HTTP, are not part of the core or of the standard library).
   `socket.udp(net)` and `socket.tcp(net) -> Result<socket.Socket,
-  socket.NetError>` open an IPv4 socket of datagrams or of a stream. Each
-  performs `net`. `NetError` is `PermissionDenied` or `Other(errno)`.
+  socket.NetError>` open an IPv4 socket of datagrams or of a stream, which
+  a program the process starts with `exec` does not inherit (close-on-exec,
+  as the files `std/fs` opens). Each performs `net`. `NetError` is
+  `PermissionDenied` or `Other(errno)`.
 - **[SOCK-2]** A `socket.Socket` is a capability derived from a `Net`
   ([CAP-4]): a struct of the library with a private descriptor, which
   moves; it is closed when it is destroyed, by a destructor that performs
@@ -1685,7 +1693,7 @@ its failure and its contract (part 2).
     `getenv`, *(decision 0023)* the allocator's `malloc`, `realloc` and
     `free`, and *(decision 0026)* the C functions through which the hosted
     runtime reaches the resources of the capabilities, `open`, `read`,
-    `close`, `clock_gettime`, `getentropy` and `socket` —, names starting
+    `close`, `clock_gettime`, `getentropy`, `socket` and `fcntl` —, names starting
     with `yxy_rt_`, and names starting with `__`
     (reserved for the C implementation, such as the stack probe
     `__chkstk_darwin` and the arithmetic helpers of 32-bit targets) cannot be
