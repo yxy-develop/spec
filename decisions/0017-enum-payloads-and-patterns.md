@@ -5,12 +5,14 @@
   Phase 5; open to the author's review; the budget of the analysis (item 10),
   `..` in struct patterns (item 8), the absence of a test of a variant (item
   4) and the payloads without overlap (item 5) are reviewed by the author at
-  the gate of 0.1)
-- Date: 2026-09-28
+  the gate of 0.1). At that gate (2026-10-04) the author accepted the
+  budget and asked for a guaranteed minimum before the opening; the
+  amendment of 2026-10-05 below fixes it ([MATCH-7]).
+- Date: 2026-09-28; amended 2026-10-05 (the guaranteed minimum of item 10)
 - Spec: `syntax.md` §3 (`enum_decl`, `variant`, `pattern`, the note after
   the grammar), [GR-9]; `semantics.md` [TY-1], [TY-3], [DECL-6], §2.2
   [ENUM-1]–[ENUM-5], [STRUCT-7], [STRUCT-8], [STRUCT-9], [MATCH-1],
-  [MATCH-4]–[MATCH-6], [NUM-5], [ABI-2], §12; `OPEN.md` #5, #32, #33, #35,
+  [MATCH-4]–[MATCH-7], [NUM-5], [ABI-2], §12; `OPEN.md` #5, #32, #33, #35,
   #46
 - Author requirements it follows (register of the control repository): M-2
   (nothing silent: a pattern never ignores a field or a value without
@@ -168,9 +170,58 @@ payloads of every enum.
     algorithm: a larger budget, or an algorithm that spends less on every
     `match`, only accepts more programs; a smaller budget after the language
     opens would refuse some.
-    No minimum that every compiler must accept is fixed yet; whether the
-    specification fixes one (a number of arms of a table of literals, of
-    pairs of two enums) is for the author at the gate of 0.1.
+    *(amended 2026-10-05)* The minimum that every compiler accepts is
+    [MATCH-7]: two kinds of table, below.
+
+    **Amendment of 2026-10-05: the guaranteed minimum ([MATCH-7]).** At the
+    gate of 0.1 the author accepted the budget and asked for a minimum
+    before the opening (L-0017 A1: "Aceitar; mínimo garantido antes da
+    abertura"): lowering the budget after the opening would refuse
+    programs that were valid, so a floor must exist before anyone depends
+    on it. The minimum is stated in units of the source — arms, and values
+    held by variants — not in the compiler's cells, so that another
+    compiler, with another algorithm, can tell whether it conforms. It
+    covers the `match`es that generators write, tables, where the size is
+    large and the shape regular:
+
+    1. *A table of one value*: every arm but a last `_` or name is a simple
+       test of the matched value (a literal, or a variant whose patterns
+       inside are `_` or names), at most 65 536 arms; the variants of an
+       enum hold at most 256 values in all.
+    2. *A table of two values*: a struct of two fields, every arm but a last
+       `_` or name testing both fields with a literal or a variant without
+       data, at most 512 arms.
+
+    Each kind costs this compiler a known amount at its limits, derived by
+    hand from the cost of a step of the analysis and tested (compiler
+    `usefulness.rs`, `the_guaranteed_minimum_is_checked_within_a_tenth_of_the_budget`;
+    `conformance_h.rs`, `the_guaranteed_minimum_of_a_match_is_accepted`): a
+    table of `n` integers and `_` costs `3n + 2` cells, 196 610 at 65 536
+    arms; a table of one value on an enum of `k` variants holding `Σa`
+    values, at most `max a` in one variant, costs at most `4k + Σa + 4 +
+    (max a + 1)(Σa + k)` cells, 67 585 for 256 variants with every value in
+    one; a table of two values of `A` arms costs at most `A² + 10A + 517`
+    cells (the arms read only the arms above them with the same first test,
+    and the search for a missing value stops at the first one), and its
+    worst case, every arm with the same first literal, `m² + 6m + 5` for
+    `m` such arms and `_`, 264 192 at 512 arms. Each is under a tenth of
+    the budget of 4 000 000 cells: the minimum keeps a margin of ten, so the
+    compiler may change its algorithm or its unit without coming near it.
+    The limits stop where that margin ends for the worst shape of each kind:
+    the table of two values with one first literal reaches the budget at
+    1 999 arms, which this compiler refuses with E0333, so 512 keeps the
+    margin. Enums have at most 256 variants ([TY-3]), so a table on an enum
+    has at most 257 arms; the bound on the values held keeps the columns
+    that the last check walks through few.
+
+    What the minimum leaves out, on purpose: nested patterns and struct
+    patterns of more than two tested fields. Their cost is exponential in
+    the worst case (the struct of `n` booleans above), so any minimum that
+    covered every such `match` would be small enough to be useless, and a
+    minimum stated by shape is what another implementation can check. The
+    `match`es people write stay far below the budget (187 cells for the
+    largest of the suite); if generators of nested patterns appear, a third
+    kind can be added: raising the minimum only accepts more programs.
 
 ## Alternatives considered
 
@@ -266,6 +317,9 @@ payloads of every enum.
 - The MIR-0 and its verifier (master plan, Phase 6): the lowering of `match`
   on a control-flow graph, which will check that no payload is read before its
   tag.
+- Generators of real programs that write `match`es outside the two kinds
+  of [MATCH-7] (nested patterns, wider structs): a third kind of table, or
+  larger limits; never smaller ones after the opening.
 - The author's review, at the gate of 0.1, of the questions of the review of
   2026-09-28 (control repository): the budget of [MATCH-6] (its value and
   unit, and a minimum fixed by the specification, when generators of real
