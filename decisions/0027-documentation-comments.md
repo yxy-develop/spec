@@ -46,7 +46,12 @@ needs a marker, as small as possible, that a reader and a tool both see.
 4. **No meaning.** A documentation comment changes nothing of the program:
    no check, no code, no fact but the documentation; [LEX-3a] holds in it
    as in every comment. The formatter keeps it where it is, as it keeps
-   every comment.
+   every comment, and keeps what it documents: after a run, one blank line
+   stays where there was at least one (the formatter otherwise drops blank
+   lines before an item), so formatting never makes a run that documented
+   nothing document what follows, nor a run end where it did not.
+   *(Amended 2026-10-05, the self-check of TASK-20260926-051: `yxy fmt` had
+   joined `/// a` and a blank line to the next item.)*
 
 ## Alternatives
 

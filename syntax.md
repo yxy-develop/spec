@@ -35,7 +35,8 @@ alternative, `"x"` = literal token. `NL` is the newline token (see §2).
   nothing. Its text is each comment's after `///` and one space, joined by
   line feeds, read as Markdown for people (paragraphs, code spans, fenced
   code blocks), in which HTML is text, never markup. It is a comment: it
-  changes nothing of the program's meaning.
+  changes nothing of the program's meaning, and the formatter keeps what
+  it documents (a blank line after a run stays).
 
 ### 1.2 Identifiers and words
 
