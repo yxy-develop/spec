@@ -300,8 +300,11 @@ language. See `decisions/0025-generics.md`.
   each parameter a type with its mode (`take T`, `inout T`, or borrowed),
   the result optional (`()`), and the effects clause mandatory, on the same
   line. Two function types are the same type when their modes, types,
-  results and sets of effects are equal; there is no subtyping between
-  them. A **function value** is a function of the program named where a
+  results and sets of effects are equal, except that `take` before a
+  parameter whose type is a copy type ([OWN-1]) is no part of the type:
+  `fn(take u64) -> u64` is `fn(u64) -> u64`, also after type arguments
+  are substituted ([GEN-6]) *(amendment of 2026-10-06, pre-launch
+  validation)*; there is no subtyping between them. A **function value** is a function of the program named where a
   value is expected (`f`, `pkg.f`), with no call; its type is its
   signature, or the expected function type it converts to ([GEN-8]); a
   generic function becomes a value of the instantiation the expected type
@@ -689,7 +692,8 @@ come with allocation (TASK-20260926-043, -044).
   it out ([OWN-5]); of a copy type, it is a copy, as before. A parameter
   `take p: T` **receives** the value: the argument moves ([OWN-2]), and the
   function owns it, as a variable declared with `:=`. `take` is written
-  only before a parameter whose type moves, and is a word only there, so a
+  only before a parameter whose type moves (in a declaration; in a function
+  type, `take` before a copy type is allowed and changes nothing, [GEN-7]), and is a word only there, so a
   name `take` stays usable. Parameters stay immutable bindings
   ([STRUCT-5]).
 - **[OWN-4]** *(moved places)* After a moving use of a place `p`, `p` is
