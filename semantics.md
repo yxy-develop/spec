@@ -363,6 +363,18 @@ language. See `decisions/0025-generics.md`.
   the type argument is determined or the type made. The size bounds the growth of types through
   instantiations (`f<T>` asking for `f<Option<fn(T, T) effects {}>>`),
   which [STRUCT-9] does not bound (a function value is one component).
+  *(amended 2026-10-06)* The recursion of a generic struct or enum is
+  **regular**: following the type arguments in its fields (the data of its
+  variants), through `Option`, `Result`, arrays, views, function types and
+  other generic structs and enums, a type parameter may come back as a type
+  parameter of the same type, in any position (`Tree<T>` holding a
+  `List<Tree<T>>`, `Swap<A, B>` holding a `Box<Swap<B, A>>`), but never
+  inside a larger type (`Poly<T>` holding a `Box<Poly<Option<T>>>`, whose
+  instantiations `Poly<u8>`, `Poly<Option<u8>>`, … have no end, though
+  no `Poly` contains itself); the declaration of a type that is not regular
+  is an error (E0399), before any instantiation is made. A generic struct
+  or enum has at most 65 536 instantiations, those with a type parameter
+  too (E0395), whatever its fields.
 - **[GEN-10]** *(boundaries)* An `extern fn`, an `export fn` and `main` have no
   type parameters, and a function type is not a type of the C boundary
   ([ABI-2]).
@@ -954,14 +966,21 @@ and never by a trap.
   the slice lives (it is not changed, lent `inout` or moved), and a function
   returns such a slice only of a list it borrows ([REF-2], [TEXT-9]). An
   element of it is read as an element of any slice: copied when its type is
-  a copy type, otherwise borrowed, never moved out ([OWN-5]).
+  a copy type, otherwise borrowed, never moved out ([OWN-5]). *(amended
+  2026-10-06)* The binding of a `for` over such a slice is a part of what
+  the slice views, as the binding of a `match` on a place is: a function
+  that borrows a list of lists may return `list.view(l)` for the `l` of
+  `for l in list.view(ll)`, which views `ll`, and one that owns `ll` may
+  not (E0750).
 - **[LIST-6]** *(values in and out)* A value given to `push`, `insert`,
   `set` or `replace` belongs to the list; one taken out by `pop`, `remove`
   or `replace` to the caller. `set` destroys the old value before it stores
   the new one, as an assignment does ([DROP-3]); `clear` destroys every
   value, the first first. Destroying a `List<A>`, and every call of a
   function of `alloc/list` with the type argument `A`, performs the
-  destruction effects of `A` ([DROP-5], [GEN-8]).
+  destruction effects of `A` ([DROP-5], [GEN-8]). Destroying a chain of
+  `N` boxes (or lists), each holding the next, recurses `N` deep, as any
+  recursion does: exhausting the stack is not a trap ([TRAP-2]).
 - **[BOX-1]** `Box<T>`, of the package `alloc/boxed` (`boxed.Box<T>`), is
   one value of `T` on the heap: a struct of the library whose field is
   private, with a destructor that destroys its value and frees its block.

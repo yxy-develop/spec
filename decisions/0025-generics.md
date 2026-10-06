@@ -20,7 +20,9 @@
 - Amendment (2026-10-06, experimental): decision 0029 writes the
   `List<T>` and `Box<T>` that part 10 deferred, as generic code of the
   library without constraints, and amends [GEN-1] (a struct of the standard
-  library may have a type parameter that no field mentions).
+  library may have a type parameter that no field mentions); its
+  self-check adds to [GEN-9] the regular recursion of generic types (E0399,
+  part 9 of decision 0029).
 - Spec: new `semantics.md` §2.3 ([GEN-1]–[GEN-12]) when step 2 lands; it
   amends the table of §2, [TY-1], [TY-3], [STRUCT-1], [ENUM-1], [OWN-1],
   [EFF-3], [EFF-5], [DROP-1], [DROP-5], [ABI-2], [GR-1], §12 and the
@@ -285,7 +287,10 @@ offsets and tags of `Option` and `Result` on every target.
    same error at the same site everywhere. An instantiated type also keeps
    the limits of written types ([GR-5], [STRUCT-9]), and *(amended
    2026-10-04, below)* a type argument and an instantiated type have a
-   size of at most 32 768 types written out (E0398). The bounds refuse
+   size of at most 32 768 types written out (E0398), and *(amended
+   2026-10-06 by decision 0029)* the recursion of a generic struct or enum
+   is regular, which no count above bounds when its types do not contain
+   themselves (E0399, below). The bounds refuse
    runaway expansion, not measured programs: B5's proxies took 23–65 million
    compiler instructions per instantiation of a small function, so 16 384
    of them would take minutes in those compilers.
@@ -443,7 +448,15 @@ with its exact diagnostics) test per rule:
   *(amendment of 2026-10-04)* types that grow through instantiations: a
   type argument beyond the size (E0398) or the nesting (E0398), an
   instantiated type and a variable of a generic body beyond [STRUCT-9]
-  (E0900), each refused in well under a second.
+  (E0900), each refused in well under a second; *(amendment of 2026-10-06,
+  decision 0029)* `Poly<T>` holding a `Box<Poly<Option<T>>>`, a
+  `List<Poly<Option<T>>>` or a function that takes a `Poly<Option<T>>`, an
+  enum likewise, and two types that ask for each other with a larger type
+  (E0399, at the declaration, each in well under a second, where they ran
+  without end or ended in an internal error); the regular twins in `run/`
+  (`Tree<T>` holding a `List<Tree<T>>`, `Option<Box<Node<T>>>`, two types
+  holding each other, a type holding itself with its parameters swapped or
+  with a type that holds none), valid.
 - **[GEN-10]**: a generic `extern fn`, `export fn` and `main` (E0393).
 - **[GEN-11]**: the facts of a fixture derived by hand: instantiations with
   their type arguments, effects, `frame_bytes`, depth and requesting sites;
@@ -473,6 +486,7 @@ E039x; effects and capabilities, E061x):
 | E0396 | unused type parameter | [GEN-1] |
 | E0397 | not a function value | [GEN-7] |
 | E0398 | type argument too large *(amendment of 2026-10-04)* | [GEN-9] |
+| E0399 | type recurses with larger type arguments *(amendment of 2026-10-06, decision 0029)* | [GEN-9] |
 | E0614 | function value with effects beyond its type | [GEN-8] |
 
 By the rules of the codes (`docs/diagnostics.md`, "Codes and their

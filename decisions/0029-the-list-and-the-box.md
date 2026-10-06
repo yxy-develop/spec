@@ -15,10 +15,12 @@
   basic library promised for 0.2 (the compiler's `STATUS.md`, R1182).
 - Spec: new `semantics.md` §4.5 ([LIST-1]–[LIST-6], [BOX-1]–[BOX-3]);
   amends [GEN-1], [REF-2], [TEXT-8], [TEXT-9], [ALLOC-3], the introduction
-  of §7.2 and §12; `modules.md` [STD-8]; `OPEN.md` #5 and #52; decisions
+  of §7.2 and §12, and, by the self-check (part 9), [GEN-9], [LIST-5] and
+  [LIST-6]; `modules.md` [STD-8]; `OPEN.md` #5 and #52; decisions
   0022 (part 5) and 0025 (part 10) gain a line that points here.
 - Implementation: the compiler's `docs/implementation/STATUS.md`,
-  R1500–R1519 (R1182 executed).
+  R1500–R1512 (R1182 executed), and the fixes of the self-check of part 9,
+  R1513–R1517.
 - Author requirements it follows: M-1 and M-2 (nothing copied, cloned or
   boxed in silence: a value goes onto the heap only through a call written
   in the program), M-4 (no abort hidden behind an API presented as
@@ -228,6 +230,71 @@ array; a box of a value whose size is not known (there are no such types).
 `Option` and `Result` stay built into the compiler (#52): the library's
 `pop` and `try_` forms use them as any program does, and their move to
 `core` changes no code of `alloc/list` or `alloc/boxed`.
+
+### 9. Amendment (2026-10-06): the self-check
+
+The orchestrator's self-check of the decision's implementation (control
+repository, `reviews/2026-10-06-pre01-listbox-selfcheck.md`) found no
+unsoundness in the borrowed view, the slot operations or the heap, and five
+things to say or fix. These choices are the orchestrator's, for the author's
+review, as every choice of this decision.
+
+1. **Regular recursion of generic types** ([GEN-9] amended, E0399; finding
+   P53-1). A box, a list or a function type stops a struct from containing
+   itself, so [STRUCT-2] does not refuse
+   `struct Poly<T> { v: T, next: Option<Box<Poly<Option<T>>>> }`, and
+   nothing bounded it: `Poly<u8>` asks for `Poly<Option<u8>>`, which asks
+   for `Poly<Option<Option<u8>>>`, without end, and `yxy check` took
+   gigabytes of memory or died of an internal error (also with a `List`,
+   and with a field of function type, which needs no library: decision
+   0025 had the same hole, and the library only made it easy to write).
+   The recursion of a generic struct or enum is now **regular**: following
+   the type arguments in its fields (the data of its variants) through
+   `Option`, `Result`, arrays, views, function types and other generic
+   structs and enums, transitively through types that hold each other, a
+   type parameter may come back as a type parameter of the same type, in any
+   position, and never inside a larger type. `Tree<T>` holding a
+   `List<Tree<T>>`, `Node<T>` holding an `Option<Box<Node<T>>>`, two types
+   holding each other with the same argument, `Swap<A, B>` holding a
+   `Box<Swap<B, A>>` (finitely many instantiations) and `Fixed<T>` holding a
+   `Fixed<u8>` (a type with no parameter in it) stay valid; `Poly<T>` above
+   is E0399, reported once at the declaration of each type whose own
+   parameter grows, before any instantiation is made. A bound on the work of
+   one declaration backs it up: a generic struct or enum has at most 65 536
+   instantiations, the open ones of generic bodies included (E0395).
+   Alternatives: bounding only the instantiations (the counts of [GEN-9]
+   do not stop the loop that makes the fields of a type's instantiations,
+   which is where the memory went; and the error would name no declaration);
+   refusing every use of a different argument, the swapped `Swap<B, A>`
+   and `Poly<u8>` included (simpler to say, and refuses programs with
+   finitely many instantiations, which the machinery handles).
+2. **Destroying a long chain of boxes** (finding P53-2; no rule changes).
+   Destroying a `Box` destroys its value, which destroys the next box, so
+   a chain of `N` nodes recurses `N` deep, and 300 000 nodes exhaust the
+   native stack. That is [TRAP-2]: stack exhaustion is not a trap in this
+   version, the process ends with the operating system's signal (the
+   reference evaluator stops at 20 000 nested calls, exit 4). The library
+   documents it (`docs/std.md`), and a program with a long chain takes it
+   apart with a loop of `into_inner`. An iterative destructor would need
+   a loop over the values of a type that a generic body cannot write
+   without constraints.
+3. **The binding of a `for` is a part of what the slice views** ([LIST-5]
+   amended; finding P53-4). `for l in list.view(ll) { return list.view(l) }`
+   is valid when `ll` is a parameter the function borrows, and is E0750
+   when `ll` is a local or a `take` parameter, as the binding of a `match`
+   on a place is a part of that place ([OWN-5]): before, the binding was a
+   local of its own and both were E0750, which is safe but refused a
+   program with nothing to fix.
+4. **The reference evaluator and huge blocks** (finding P53-3; the
+   implementation, no rule changes). A request for room larger than the
+   machine holds (`with_capacity(2147483648)` of `u64`) is the allocator's
+   to refuse or to grant, and the native code's `malloc` may do either;
+   the evaluator grants a block of up to 2^47 bytes without making its
+   bytes until they are written, so that it neither allocates nor fills
+   them. The difference is the machine's, not the language's ([ALLOC-3]).
+5. **The register** (finding P53-5). The rows of the implementation are
+   R1500–R1512, as this decision and `OPEN.md` #5 now say; the fixes of this
+   part are R1513–R1517.
 
 ## Alternatives
 
