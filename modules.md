@@ -355,13 +355,16 @@ effects {}
   ([EFF-5]). The trap report of a hosted program ([TRAP-1]) belongs to the
   hosted runtime in every layer; a freestanding profile gives a `core`
   program its own (OPEN #41).
-- **[STD-8]** *(experimental, decisions 0022, 0023 and 0026)* The packages of the
+- **[STD-8]** *(experimental, decisions 0022, 0023, 0026 and 0029)* The packages of the
   standard library in this version are `core/ascii` (ASCII bytes:
   classification, case, digit value), `core/utf8` (UTF-8 text: validation of
   bytes, boundaries, parts and code points, `semantics.md` [TEXT-11]–
   [TEXT-13]), `alloc` (`AllocError`, the error of the `try_` operations of
   [ALLOC-3]; nothing of it allocates), `alloc/string` (the owned string,
   `semantics.md` [STR-1]–[STR-5], the first package that allocates),
+  *(decision 0029)* `alloc/list` and `alloc/boxed` (the list and the box,
+  `semantics.md` [LIST-1]–[LIST-6], [BOX-1]–[BOX-3]; `alloc` gains
+  `Refused<T>`, the error of a `try_` operation that takes a value),
   `std/print` (writing through a `Console` the caller passes) and *(decision
   0026)* `std/fs`, `std/socket`, `std/time` and `std/rand` (the files, the
   network at the level of sockets, the clocks and the entropy of the host,
@@ -371,9 +374,9 @@ effects {}
   is of the `std` layer ([STD-5]), as are `Files`, `Net`, `Clock` and
   `Random`. No package of the standard library is about a protocol above
   sockets (HTTP), a database or inference (the author's requirement Y-9). The
-  place of the other owned heap types (`alloc/list`, `alloc/boxed`) and the
-  shape of their operations are in decision 0022, part 5; they wait for
-  generics (OPEN #5).
+  place of the owned heap types and the shape of their operations are in
+  decision 0022, part 5; *(decision 0029)* the list and the box follow it,
+  built on generics without constraints (OPEN #5).
 
 ## 5. Nothing runs at import or resolution
 

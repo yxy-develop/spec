@@ -241,9 +241,12 @@ language. See `decisions/0025-generics.md`.
   parameter of a function appears in the type of a parameter or in the
   result type, and every type parameter of a struct or an enum in a field or
   the data of a variant; otherwise it is an error, since nothing could
-  determine it. Rules on structs and enums hold for their generic forms: a
-  generic struct that contains itself, with any type arguments, is
-  recursive ([STRUCT-2]).
+  determine it. *(decision 0029)* A struct of the standard library may
+  declare a type parameter that no field mentions, whose values it keeps on
+  the heap through the library's own operations ([LIST-1], [BOX-1]); its
+  type arguments are written or expected ([GEN-2]). Rules on structs and
+  enums hold for their generic forms: a generic struct that contains
+  itself, with any type arguments, is recursive ([STRUCT-2]).
 - **[GEN-2]** **Type arguments** are written in types (`Pair<u8, bool>`),
   exactly as many as the item declares; a type that is not generic takes
   none. In expressions they are never written: the type arguments of a
@@ -488,14 +491,19 @@ language. See `decisions/0025-generics.md`.
   only an immutable one)*. Borrowing a scalar, a slice or a view is an error.
   The array does not change while the slice lives ([REF-7]), so a slice never
   observes a mutation. `for x in a` iterates `&a` ([LOOP-4]).
-- **[REF-2]** References cannot escape: no function returns a slice or a view
-  `&mut [T]`, and they cannot be stored in arrays, `Option`, `Result`, struct
-  fields or values of variants. A slice parameter or local
-  therefore never outlives the array it views. This is a restriction of the
-  subset, not a borrow checker; wider borrowing rules are future work. Text
-  (`&str`, §4.1) views constant data, which outlives every function, so a
-  function may return it ([TEXT-6]); the slice `t.bytes` of a text follows
-  this rule like any slice.
+- **[REF-2]** References cannot escape: no function returns a view
+  `&mut [T]`, and slices and views cannot be stored in arrays, `Option`,
+  `Result`, struct fields or values of variants. *(decision 0029; before,
+  no function returned a slice either)* A function may return a slice
+  `&[T]` under the rule of text ([TEXT-8], [TEXT-9]): the result of a call
+  views what its arguments view, but those of `take` parameters, and a
+  function returns only a slice that views no local of its own, `take`
+  parameter or `inout` parameter (`list.view(l)`, [LIST-5]). A slice
+  therefore never outlives the array or the list it views. This is a
+  restriction of the subset, not a borrow checker; wider borrowing rules are
+  future work. Text (`&str`, §4.1) views constant data, which outlives every
+  function, so a function may return it ([TEXT-6]); the slice `t.bytes` of
+  a text follows this rule like any slice.
 - **[REF-3]** `s.len` is the number of **elements** of an array or slice, of
   type `usize`. In this version `s` names the array or slice: a local
   variable or a parameter.
@@ -593,10 +601,11 @@ points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
   [OWN-5]; for a parameter without `take` or `inout`, none); `t.bytes`,
   `Some(t)`, `Ok(t)`, `Err(t)` and `t?` view what `t` views, a `match` what
   the values of its arms view, a binding what its subject views; the result
-  of a call that holds text views what its arguments view, but those of
-  `take` parameters. An element of a view `&mut [T]` (or a part of one)
-  views that view, also when it is a parameter: the view is the only access
-  to its array while it lives ([REF-6]), so text that views an element
+  of a call that holds text *(decision 0029: or is a slice)* views what its
+  arguments view, but those of `take` parameters. An element of a view
+  `&mut [T]` (or a part of one) views that view, also when it is a
+  parameter: the view is the only access to its array while it lives
+  ([REF-6]), so text that views an element
   through it **freezes the view** — no element is assigned or lent `inout`
   through it, and it is not given to a call, while the text lives — and
   text that views an array a live `&mut` view borrows is an error
@@ -613,7 +622,8 @@ points (Unicode scalar values) and grapheme clusters ([TEXT-15]).
   `take` parameter or an `inout` parameter: constant data, or the
   parameters it borrows. A variable holds only views of what its
   declaration viewed: assigning it text that views another source is an
-  error (declare a new variable).
+  error (declare a new variable). *(decision 0029)* Both hold for a slice
+  `&[T]`, which a function may now return ([REF-2]).
 - **[TEXT-10]** *(experimental, decision 0023)* An `Option` or a `Result`
   may hold text (`Result<&str, utf8.Utf8Error>`) where text may go
   ([TEXT-6]); it views what its text views ([TEXT-8]).
@@ -906,6 +916,64 @@ and never by a trap.
   and calls may allocate and where the library asks for memory. The hosted
   runtime's allocator is the C library's `malloc`, `realloc` and `free`
   ([ABI-3] (a)).
+
+### 4.5 The list and the box *(experimental, decision 0029)*
+
+- **[LIST-1]** `List<T>`, of the package `alloc/list` (written
+  `list.List<T>` where it is imported), is a growable sequence of values of
+  `T` on the heap: a struct of the library whose fields are private, with a
+  destructor that destroys its values from the first to the last, as an
+  array's ([DROP-2]), then frees its block. It moves, is destroyed by its
+  owner on every exit ([DROP-3]) and is never copied (`.copy()` and
+  `[v; N]` of one are refused, [DROP-4]). `T` is any type argument
+  ([GEN-3]). Its values are on the heap, not in its fields ([GEN-1]), so a
+  struct that holds a list or a box of itself is not recursive
+  ([STRUCT-2]).
+- **[LIST-2]** *(growth)* A list keeps its values in one block, each at the
+  distance of the size of `T`; its capacity counts values. When the block is
+  full, the new one holds twice as many values, at least 4 and at least the
+  new length, or exactly the new length when that larger block cannot be
+  had. `with_capacity(n)` makes room for exactly `n` values.
+- **[LIST-3]** *(operations)* Its operations are functions of `alloc/list`:
+  `new()` (no allocation), `with_capacity(n)`, `reserve(inout l, n)`,
+  `push(inout l, take v)`, `insert(inout l, i, take v)` and their `try_`
+  forms; `pop(inout l) -> Option<T>`, `remove(inout l, i) -> T`,
+  `set(inout l, i, take v)`, `replace(inout l, i, take v) -> T`,
+  `swap(inout l, i, j)`, `clear(inout l)`, `len(l)`, `capacity(l)` and
+  `view(l)` ([LIST-5]). An index not below the length (above it for
+  `insert`) traps with *index out of bounds* in `alloc/list` ([REF-4]).
+- **[LIST-4]** *(out of memory, [ALLOC-3])* A plain form traps with
+  *allocation failed* in `alloc/list` when the allocator has no memory or
+  the size does not fit; its `try_` form never traps for lack of memory,
+  leaves its `inout` list as it was, and returns
+  `Err(alloc.AllocError…)` when it takes no value (`try_with_capacity`,
+  `try_reserve`), or `Err(alloc.Refused<T>)` when it takes one (`try_push`,
+  `try_insert`): the value given back (`value`) and why (`error`).
+- **[LIST-5]** *(the view)* `list.view(l)` is a slice `&[T]` of the values
+  of `l`, nothing copied, which views `l` ([TEXT-8]): `l` is frozen while
+  the slice lives (it is not changed, lent `inout` or moved), and a function
+  returns such a slice only of a list it borrows ([REF-2], [TEXT-9]). An
+  element of it is read as an element of any slice: copied when its type is
+  a copy type, otherwise borrowed, never moved out ([OWN-5]).
+- **[LIST-6]** *(values in and out)* A value given to `push`, `insert`,
+  `set` or `replace` belongs to the list; one taken out by `pop`, `remove`
+  or `replace` to the caller. `set` destroys the old value before it stores
+  the new one, as an assignment does ([DROP-3]); `clear` destroys every
+  value, the first first. Destroying a `List<A>`, and every call of a
+  function of `alloc/list` with the type argument `A`, performs the
+  destruction effects of `A` ([DROP-5], [GEN-8]).
+- **[BOX-1]** `Box<T>`, of the package `alloc/boxed` (`boxed.Box<T>`), is
+  one value of `T` on the heap: a struct of the library whose field is
+  private, with a destructor that destroys its value and frees its block.
+  It moves, is destroyed by its owner and is never copied, as a list.
+- **[BOX-2]** *(operations)* `boxed.new(take v)` and `boxed.try_new(take
+  v)`; `boxed.view(b)`, its value viewed as the one element of a slice
+  `&[T]`, which views `b` as [LIST-5] says; `boxed.replace(inout b, take v)
+  -> T`, the old value; `boxed.into_inner(take b) -> T`, the value taken out
+  and the block freed.
+- **[BOX-3]** *(out of memory)* `boxed.new` traps with *allocation failed*
+  in `alloc/boxed`; `boxed.try_new` returns `Err(alloc.Refused<T>)`, with
+  the value given back, and never traps for lack of memory.
 
 ## 5. Functions and cells
 
@@ -1499,8 +1567,8 @@ of §7.5.
 The layers of the standard library are in `modules.md` [STD-2] and
 [STD-5]–[STD-8]; the owned heap types, with the place and the shape of their
 operations, in decision 0022, part 5. *(decision 0023)* The owned string
-(§4.4) is the first type that allocates; the list and the box wait for
-generics (OPEN #5).
+(§4.4) is the first type that allocates; *(decision 0029)* the list and the
+box (§4.5) are the others.
 
 - **[ALLOC-1]** Allocation is what the `alloc` layer gives: only the
   operations of the packages of `alloc` (and those of `std` that use them)
@@ -1519,7 +1587,10 @@ generics (OPEN #5).
   *allocation failed* at the operation ([TRAP-1], [TRAP-3]). The **`try_`**
   form returns `Result<T, alloc.AllocError>` — `Err(OutOfMemory)` or
   `Err(CapacityOverflow)` — never traps for lack of memory, and on failure
-  leaves its `inout` operands as they were. `.copy()` of an owned heap
+  leaves its `inout` operands as they were; *(decision 0029)* one that takes
+  a value to keep on the heap returns `Result<T, alloc.Refused<V>>`
+  instead, whose error gives the value back with the `AllocError`
+  ([LIST-4], [BOX-3]). `.copy()` of an owned heap
   value traps like a plain form; *(decision 0023)* `[v; N]` of one is
   refused, as for every value with a destructor ([DROP-4], [STR-4]).
 - **[ALLOC-4]** No abort is hidden behind an operation presented as
@@ -1882,10 +1953,10 @@ arguments written in expressions, effect parameters, closures, subtyping
 between function types, function values at the C boundary (decision 0025),
 method calls (other than the operations of a `Console`, [CON-2],
 of an `Mmio`, [MMIO-3], and `.copy()`, [OWN-6]), owned resources other than the owned string
-(decision 0023), an implicit copy of a struct
+(decision 0023), the list and the box (decision 0029), an implicit copy of a struct
 or of an enum with data (decision 0020, [OWN-1]), `inout` on a parameter
 that holds no value or at the C boundary, `&mut` of anything but a `mut`
-array, a view stored or returned, destructors of enums, a destructor
+array, a view `&mut [T]` returned, a slice or a view stored, destructors of enums, a destructor
 called by name, a copy of a value that has a destructor ([DROP-4]),
 loop labels, `break` with a value,
 ranges as values, ranges without a bound, iterating text by
@@ -1899,9 +1970,9 @@ arrays as parameters or return values, nested cells, `if` as an expression
 ([GR-3]), or-patterns, match guards and range patterns (OPEN #46), sub-slices
 (OPEN #47), indexing or `.len` of an array or slice that is not named
 ([REF-3], [REF-4]),
-lists and boxes (decision 0022: their place and the shape of their
-operations, [ALLOC-1]–[ALLOC-4]), a copy of a value that holds an owned
-string ([STR-4]), grapheme clusters ([TEXT-14]), a `char` type and
+a copy of a value that holds an owned string ([STR-4]), a copy, equality,
+search or sorting of a list or a box, `for` over a list, a view `&mut [T]`
+of its values (decision 0029, OPEN #5, #49), grapheme clusters ([TEXT-14]), a `char` type and
 character literals ([TEXT-13], [LEX-11]), the text
 operations of [TEXT-7], the float
 operations of [FLT-5], float literals as patterns ([FLT-10]), floating-point

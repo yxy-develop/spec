@@ -17,6 +17,10 @@
   measurements of benchmark B5 (the compiler repository,
   `benchmarks/results/README.md`, "B5 results (generics)", and
   `b5-generics-2026-10-04-aarch64-apple-darwin.json`).
+- Amendment (2026-10-06, experimental): decision 0029 writes the
+  `List<T>` and `Box<T>` that part 10 deferred, as generic code of the
+  library without constraints, and amends [GEN-1] (a struct of the standard
+  library may have a type parameter that no field mentions).
 - Spec: new `semantics.md` §2.3 ([GEN-1]–[GEN-12]) when step 2 lands; it
   amends the table of §2, [TY-1], [TY-3], [STRUCT-1], [ENUM-1], [OWN-1],
   [EFF-3], [EFF-5], [DROP-1], [DROP-5], [ABI-2], [GR-1], §12 and the
