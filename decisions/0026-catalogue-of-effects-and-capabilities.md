@@ -7,6 +7,14 @@
   author's requirement E-3; every choice below inside that direction is the
   orchestrator's, with the alternatives that follow.
 - Date: 2026-10-04
+- Amendment (2026-10-06, experimental): decision 0030 adds four root
+  capabilities to the five of this decision, `Args`, `Env`, `Stdin` and
+  `Stderr`, with the effects `args`, `env` and `input` (a `Stderr` performs
+  `console`), the packages `std/process` and `std/input` and §7.7 of the
+  specification ([ARGS-1], [ENV-1], [IN-1], [ERR-1]); it amends [EFF-1],
+  [EFF-2], [CAP-1], [CAP-3], [CAP-6] and [MAIN-1], and closes the part of
+  `OPEN.md` #55 that asked for the arguments, the environment, standard
+  input and standard error as capabilities.
 - Origin: `decisions/OPEN.md` #9; the master plan's row of
   TASK-20260926-048 and its "Portões objetivos (errata)", §5, items 1–6 and,
   after the answers of 2026-09-26, items 7–9; the architecture audit of

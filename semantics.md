@@ -17,6 +17,7 @@ compiler's diagnostic codes are listed in the compiler repository
   `bool`, the integer type names, `str`, `Console` *(decision 0015)*, `f32`
   and `f64` *(decision 0019)*, `Mmio` *(experimental, decision 0024)*,
   `Files`, `Net`, `Clock` and `Random` *(experimental, decision 0026)*,
+  `Args`, `Env`, `Stdin` and `Stderr` *(experimental, decision 0030)*,
   `Option`, `Result`, `Some`, `None`, `Ok`,
   `Err`, the operations in §6.4, §6.5 and §6.6 — can not be redefined,
   neither as items, import names, parameters or local variables.
@@ -43,6 +44,7 @@ compiler's diagnostic codes are listed in the compiler repository
 | `&str` | text: a read-only view of valid UTF-8 bytes (§4.1) | parameters, local variables, results and `match` values ([TEXT-6]), and in an `Option` or a `Result` there ([TEXT-10]) |
 | `Console` | the capability to write to standard output (§7.1) | parameters and local variables only ([CON-1]) |
 | `Files`, `Net`, `Clock`, `Random` | the root capabilities of the files, the network, the clocks and the entropy of the host *(experimental, decision 0026; §7.5, §7.6)* | parameters and local variables only ([CAP-2]) |
+| `Args`, `Env`, `Stdin`, `Stderr` | the root capabilities of the arguments, the environment, the standard input and the standard error of the process *(experimental, decision 0030; §7.7)* | parameters and local variables only ([CAP-2]) |
 | `T` (a type parameter) | a value of the type argument of an instantiation *(experimental, decision 0025; §2.3)* | inside its generic item only; a move type that may have a destructor ([GEN-5]) |
 | `fn(P1, take P2) -> R effects { e }` | a function of the program *(experimental, decision 0025, [GEN-7])* | anywhere a value type may appear, but the C boundary ([ABI-2]) |
 
@@ -261,7 +263,8 @@ language. See `decisions/0025-generics.md`.
   parameter of the item, and an `Option` or a `Result` of those. An array, a
   view (`&[T]`, `&mut [T]`), text (also inside an `Option` or a `Result`) and
   a capability (`Console`, `Mmio`, *(decision 0026)* `Files`, `Net`,
-  `Clock`, `Random`) are not, written or determined: a value of a type
+  `Clock`, `Random`, *(decision 0030)* `Args`, `Env`, `Stdin`, `Stderr`)
+  are not, written or determined: a value of a type
   parameter can always be stored, moved and returned, and no capability
   travels hidden in one ([CON-1], [MMIO-2], [CAP-2]).
 - **[GEN-4]** A generic item is checked once, in its generic form, where a
@@ -1351,16 +1354,19 @@ Both operands have the same integer type, taken from them or from context.
 - **[EFF-1]** `effects { … }` lists the effects a function may perform.
   *(the author's requirement E-1; wording of decision 0026)* `effects {}`
   means the absence of the tracked effects: the function performs none of
-  `clock`, `console`, `ffi`, `fs`, `net` and `random`, itself or through
-  anything it calls; it does not mean that the function is pure, that it
-  does not allocate or that it cannot trap. Nor that it always terminates,
-  reads no arguments, or costs nothing. (The tools publish the same
+  `args`, `clock`, `console`, `env`, `ffi`, `fs`, `input`, `net` and
+  `random`, itself or through anything it calls; it does not mean that the
+  function is pure, that it does not allocate or that it cannot trap. Nor
+  that it always terminates or costs nothing. (The tools publish the same
   sentence in the `limits` of their facts.)
 - **[EFF-2]** Tracked effects in this version, the catalogue of decision
   0026 *(experimental)*: `ffi` — calling code outside Yxy ([EFF-4]);
   *(decision 0015)* `console` — writing through a `Console` capability
   ([CON-3]); and `fs`, `net`, `clock` and `random` — an operation on the
   resource of a `Files`, `Net`, `Clock` or `Random` capability ([CAP-3]).
+  *(experimental, decision 0030)* `args`, `env` and `input` — an operation
+  on the resource of an `Args`, `Env` or `Stdin` capability ([ARGS-1],
+  [ENV-1], [IN-1]); a write through a `Stderr` performs `console` ([ERR-1]).
   Other names are errors. The catalogue is small and extensible, not a
   catalogue of domains: a name enters it only by a decision, and only for a
   kind of action that the language or the hosted runtime mediates; a
@@ -1429,6 +1435,8 @@ Both operands have the same integer type, taken from them or from context.
 | call to an `extern fn` | `ffi` plus its declared effects (trusted) |
 | operation of a `Console` (`console.print(…)`) | `console` ([CON-3]) |
 | a function of `std/fs`, `std/socket`, `std/time` or `std/rand` that takes a capability | `fs`, `net`, `clock` or `random` ([CAP-3]) |
+| a function of `std/process` or `std/input` that takes a capability | `args`, `env` or `input` ([CAP-3]; decision 0030) |
+| operation of a `Stderr` (`stderr.print(…)`) | `console` ([ERR-1]) |
 | destruction of a `socket.Socket` | `net`, the effect of its destructor ([SOCK-2], [DROP-5]) |
 | operators, indexing, `.len`, `.bytes`, text equality, §6.4, §6.5, §6.6 | no tracked effect; may trap (§6.2, [FLT-8]; float arithmetic never traps, [FLT-4]) |
 | loops (`while`, `loop`, `for`) | no tracked effect; iterating never traps ([LOOP-7]) |
@@ -1625,8 +1633,9 @@ its failure and its contract (part 2).
   concrete resource. Holding one never grants its effect, and declaring an
   effect never grants a capability. A **root capability** is given by the
   hosted runtime to `main`: `Console` ([CON-1]), `Files` ([FS-1]), `Net`
-  ([SOCK-1]), `Clock` ([CLOCK-1]) and `Random` ([RAND-1]), names of the
-  prelude ([PRG-2]). `Mmio` ([MMIO-1]) is a capability created by an unsafe
+  ([SOCK-1]), `Clock` ([CLOCK-1]), `Random` ([RAND-1]), and *(decision
+  0030)* `Args` ([ARGS-1]), `Env` ([ENV-1]), `Stdin` ([IN-1]) and `Stderr`
+  ([ERR-1]), names of the prelude ([PRG-2]). `Mmio` ([MMIO-1]) is a capability created by an unsafe
   operation, not a root one.
 - **[CAP-2]** A root capability is **born only in `main`** ([MAIN-1]): no
   expression of any function creates one, names its type as a value, calls
@@ -1640,14 +1649,17 @@ its failure and its contract (part 2).
   capability, given as an argument, and its effect, declared by the
   function that performs it and, by [EFF-3], by every caller: `console` for
   a `Console`, `fs` for `Files`, `net` for `Net`, `clock` for `Clock`,
-  `random` for `Random`. A function that holds the capability without
+  `random` for `Random`, *(decision 0030)* `args` for `Args`, `env` for
+  `Env`, `input` for `Stdin` and `console` for `Stderr`. A function that holds the capability without
   declaring the effect cannot perform the operation (the call is refused,
   as any call whose effects are not declared), and one that declares the
   effect without holding the capability cannot name the resource (refused
   where the capability is expected). The operations of `Files`, `Net`,
-  `Clock` and `Random` are functions of the packages `std/fs`, `std/socket`,
-  `std/time` and `std/rand`, which take the capability as their first
-  parameter; the capabilities have no operations of their own.
+  `Clock`, `Random`, `Args`, `Env` and `Stdin` are functions of the
+  packages `std/fs`, `std/socket`, `std/time`, `std/rand`, `std/process`
+  and `std/input`, which take the capability as their first parameter;
+  these capabilities have no operations of their own. `Stderr` has those of
+  a console ([ERR-1]).
 - **[CAP-4]** A **derived capability** is obtained from another capability
   and reaches a part of its resource, or a resource of its own: a console
   in memory from a `Console` ([CON-5]); a `socket.Socket` from a `Net`
@@ -1664,11 +1676,12 @@ its failure and its contract (part 2).
   capability too, or a descriptor held by a capability derived from it
   (the socket's, which the destructor of a `socket.Socket` closes), so
   that no code of the library reaches a resource without one.
-- **[CAP-6]** A failure of an operation on files, the network, a clock or
-  the entropy is a **value**: the operation returns a `Result` whose error
+- **[CAP-6]** A failure of an operation on files, the network, a clock, the
+  entropy, *(decision 0030)* the arguments, the environment or standard
+  input is a **value**: the operation returns a `Result` whose error
   is an enum of its package, and never traps (M-4: none is presented as
-  recoverable while hiding an abort). The console's operations trap
-  instead, as [CON-4] documents.
+  recoverable while hiding an abort). The console's operations, and those
+  of `Stderr`, trap instead, as [CON-4] documents.
 - **[CAP-7]** **No capability is a global singleton.** There are no global
   variables ([INIT-1]); `static` is a reserved word with no meaning
   ([LEX-6]), and if a later decision gives it one, a static value is never a
@@ -1727,6 +1740,44 @@ its failure and its contract (part 2).
   moves; it is closed when it is destroyed, by a destructor that performs
   `net` ([DROP-5]). Binding, connecting, sending and receiving are not part
   of this version (`decisions/OPEN.md` #56).
+
+### 7.7 The inputs of the process *(experimental, decision 0030)*
+
+- **[ARGS-1]** `Args` is the authority to read the arguments the process
+  was started with, after the name of the program (which is not one of
+  them). `process.arg_count(args) -> usize` gives their number;
+  `process.arg(args, i: usize) -> Result<&str, process.ArgError>` gives
+  argument `i`, from 0, as text that views the bytes the process received,
+  in place: nothing is copied and the text lives as long as the process
+  ([TEXT-8]: it views no place of the program). `Err(Missing)` when there
+  are not more than `i` arguments, `Err(NotUtf8)` when its bytes are not
+  UTF-8 ([TEXT-11]). Each performs `args`. The arguments are read only.
+- **[ENV-1]** `Env` is the authority to read the environment the process
+  was started with. `process.env_var(env, name: &str) -> Result<&str,
+  process.EnvError>` gives, as text that views it in place, the value of
+  the first entry of the environment that is `name`, `=` and the value:
+  the bytes after its first `=`. `Err(InvalidName)` for a name that no
+  variable can have (empty, or holding `=` or a zero byte), before the
+  environment is read; `Err(NotSet)` when no entry has the name;
+  `Err(NotUtf8)` when the value is not UTF-8. It performs `env`. The
+  environment is read only: nothing of the language changes it; foreign
+  code that changes it acts outside the guarantees of [EFF-5].
+- **[IN-1]** `Stdin` is the authority to read the standard input of the
+  process. `input.read(stdin, buf: &mut [u8]) -> Result<usize,
+  input.InputError>` reads bytes into `buf` from its start with one read of
+  the operating system and gives their number, which may be less than `buf`
+  holds; 0 means the end of the input; an empty `buf` reads nothing and
+  gives 0; a read interrupted by a signal is retried. `InputError` is
+  `Closed` (standard input is not open) or `Other(errno)`. It performs
+  `input`.
+- **[ERR-1]** `Stderr` is the authority to write to the standard error of
+  the process. It has the operations of a console ([CON-2]): `print`,
+  `print_u64`, `print_i64`, `print_f32` and `print_f64`, called with the
+  capability before `.`, each writing to standard error with the contract
+  of [CON-4] (every byte, in order, unbuffered; a write the stream refuses
+  traps, *console write failed*) and performing `console` ([CON-3]): the
+  effect says that a write may happen, the capability which stream. It is
+  not a `Console`: a function that takes a `Console` does not take it.
 
 ## 8. The C boundary
 
@@ -1818,7 +1869,8 @@ its failure and its contract (part 2).
     and is an error, as on any copy type; `inout` ([OWN-9]) cannot cross,
     since C cannot borrow a place of the caller exclusively;
   - a capability (`Console`, `Mmio`, *(decision 0026)* `Files`, `Net`,
-    `Clock`, `Random`) never crosses ([CON-1], [MMIO-2], [CAP-2]): an
+    `Clock`, `Random`, *(decision 0030)* `Args`, `Env`, `Stdin`, `Stderr`)
+    never crosses ([CON-1], [MMIO-2], [CAP-2]): an
     `export fn` called by C receives none, and so reaches no hosted
     resource of the catalogue;
   - an address that foreign code gives is an integer: Yxy code reaches the
@@ -1846,11 +1898,14 @@ its failure and its contract (part 2).
 - **[MAIN-1]** `fn main()` takes no parameters, or *(experimental,
   decisions 0015 and 0026)* parameters of the root capabilities, each type
   at most once, in any order and with any names: `Console`, `Files`, `Net`,
-  `Clock`, `Random` (`fn main(console: Console, files: Files)`). The
+  `Clock`, `Random`, *(decision 0030)* `Args`, `Env`, `Stdin`, `Stderr`
+  (`fn main(console: Console, files: Files)`). The
   runtime of a hosted program gives each parameter the root capability of
   its type: the console of standard output ([CON-1]), the files under the
   working directory ([FS-1]), the network ([SOCK-1]), the clocks
-  ([CLOCK-1]), the entropy of the system ([RAND-1]). This is where every
+  ([CLOCK-1]), the entropy of the system ([RAND-1]), the arguments after
+  the program's name ([ARGS-1]), the environment ([ENV-1]), standard input
+  ([IN-1]) and standard error ([ERR-1]). This is where every
   root capability is born ([CAP-2]): no other function creates one, so a
   function reaches a hosted resource only with a capability that `main`
   passed down to it. An `export fn` called by C, the other entry point that
@@ -1911,8 +1966,11 @@ precision, a width or a form the program chooses and floats read from text
 *(decision 0026)* effects declared by libraries and effect names of
 domains (`http`, `db`), operations of `Files`, `Net`, `Clock` and `Random`
 other than the functions of their packages (file handles, directories,
-removal, standard input and error, the arguments and the environment of the
-process, sockets beyond opening and closing; `decisions/OPEN.md` #54–#56),
+removal, sockets beyond opening and closing; `decisions/OPEN.md` #54–#56),
+*(decision 0030)* the arguments, the environment, standard input and
+standard error beyond [ARGS-1], [ENV-1], [IN-1] and [ERR-1] (bytes that are
+not UTF-8, the name of the program, a standard input or error in memory;
+`decisions/OPEN.md` #55),
 128-bit integers, concurrency (`par`,
 `async`), casts (`as`), block comments, *(decision 0018)* constants inside
 a function, constants of types other than the integers and `bool`, calls in

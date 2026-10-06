@@ -12,7 +12,10 @@
   and adds the console in memory, derived from a console, which writes to
   a stream in memory for tests ([CON-5]); item 8 reads "the authority to
   write to a stream: standard output, or a stream in memory"; the measure of
-  the redundancy is decided there (part 10: both stay).
+  the redundancy is decided there (part 10: both stay). Decision 0030
+  (2026-10-06, experimental) adds `Stderr`, a root capability with the
+  operations of a console that writes to standard error ([ERR-1]); it is
+  not a `Console`.
 - Spec: `syntax.md` [LEX-11], [LEX-17], [LEX-18], [GR-1], [GR-7];
   `semantics.md` §2 (table), [PRG-2], §4.1 ([TEXT-1]–[TEXT-7]), [EFF-2],
   §7.1 ([CON-1]–[CON-4]), [TRAP-1], [MAIN-1], §12; `OPEN.md` #7 (its borrowed

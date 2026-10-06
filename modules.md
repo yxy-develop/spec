@@ -339,7 +339,8 @@ effects {}
   imports, directly or not, and `std` when one of its functions has a
   parameter or variable of type `Console` (the capability of the hosted
   runtime, [CON-1]) or *(decision 0026)* of another root capability,
-  `Files`, `Net`, `Clock` or `Random` ([CAP-1]); otherwise it is `core`. The layers are ordered
+  `Files`, `Net`, `Clock` or `Random` ([CAP-1]) *(decision 0030: or `Args`,
+  `Env`, `Stdin`, `Stderr`)*; otherwise it is `core`. The layers are ordered
   `core` < `alloc` < `std`.
 - **[STD-6]** *(experimental, decision 0022)* The **layer of a program** is
   the highest layer of its packages: its main package and every package it
@@ -367,9 +368,12 @@ effects {}
   network at the level of sockets, the clocks and the entropy of the host,
   through the capability each function takes, `semantics.md` [FS-1]–[FS-3],
   [SOCK-1], [SOCK-2], [CLOCK-1], [RAND-1]) and `std/capture` (a console in
-  memory for tests, [CON-5]). `Console` stays a prelude name ([PRG-2]) and
-  is of the `std` layer ([STD-5]), as are `Files`, `Net`, `Clock` and
-  `Random`. No package of the standard library is about a protocol above
+  memory for tests, [CON-5]) and *(decision 0030)* `std/process` and
+  `std/input` (the arguments and the environment of the process, and its
+  standard input, `semantics.md` [ARGS-1], [ENV-1], [IN-1]). `Console`
+  stays a prelude name ([PRG-2]) and is of the `std` layer ([STD-5]), as are
+  `Files`, `Net`, `Clock`, `Random`, `Args`, `Env`, `Stdin` and `Stderr`.
+  No package of the standard library is about a protocol above
   sockets (HTTP), a database or inference (the author's requirement Y-9). The
   place of the other owned heap types (`alloc/list`, `alloc/boxed`) and the
   shape of their operations are in decision 0022, part 5; they wait for

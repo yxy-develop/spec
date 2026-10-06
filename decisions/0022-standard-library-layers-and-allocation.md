@@ -19,7 +19,10 @@
   and the root capabilities `Files`, `Net`, `Clock` and `Random`, of the
   `std` layer as `Console` is ([STD-5]); it decides with the measure of
   part 6 (decision 0026, part 10), which the compiler's test takes again
-  over the corpus with its programs.
+  over the corpus with its programs. Decision 0030 (2026-10-06,
+  experimental) adds the packages `std/process` and `std/input` and the
+  root capabilities `Args`, `Env`, `Stdin` and `Stderr`, also of the `std`
+  layer ([STD-5], [STD-8]).
 - Author requirements it follows (register of the control repository):
   M-2 (nothing silent), M-4 (no abort hidden behind an API presented as
   recoverable), E-2 (effects checked transitively), E-3 (a capability is not
