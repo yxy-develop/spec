@@ -19,7 +19,10 @@
   and the root capabilities `Files`, `Net`, `Clock` and `Random`, of the
   `std` layer as `Console` is ([STD-5]); it decides with the measure of
   part 6 (decision 0026, part 10), which the compiler's test takes again
-  over the corpus with its programs.
+  over the corpus with its programs. Decision 0030 (2026-10-06,
+  experimental) adds the packages `std/process` and `std/input` and the
+  root capabilities `Args`, `Env`, `Stdin` and `Stderr`, also of the `std`
+  layer ([STD-5], [STD-8]).
 - Amendment (2026-10-06, experimental): decision 0029 implements the
   `alloc/list` and `alloc/boxed` of part 5 and decides the error of a
   `try_` operation that takes a value, `alloc.Refused<T>` (the value given
