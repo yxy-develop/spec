@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
-    <img src=".github/logo.svg" alt="Yxy" width="180">
+    <img src=".github/logo.svg" alt="Yxy" width="80">
   </picture>
 </p>
 
