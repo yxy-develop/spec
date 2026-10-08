@@ -1279,7 +1279,11 @@ hold in every build mode; there is no unchecked release mode.
   (for example by declaring that an addition cannot overflow or that an index
   is in bounds). Optimization may not remove a check whose failure is
   possible, move it after effects that follow it in evaluation order ([ORD-1]
-  to [ORD-6]), or merge the reports of two checks. The report carries:
+  to [ORD-6]), or merge the reports of two checks. *(decision 0031)* A check
+  may be absent on a path where an effect-free guard, evaluated before a block
+  of work, has proven that it cannot fail; when the guard does not hold, the
+  block runs with every check, so the first failing check and its report are
+  unchanged. The report carries:
   - a **stable code** for the kind of failure, which is never reused for
     another kind;
   - the **site**: a number that identifies the check within the program, the
