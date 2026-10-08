@@ -1,5 +1,8 @@
 <p align="center">
-  <img src=".github/logo.svg" alt="Yxy" width="180">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
+    <img src=".github/logo.svg" alt="Yxy" width="180">
+  </picture>
 </p>
 
 <h1 align="center">yxy-develop/spec</h1>
