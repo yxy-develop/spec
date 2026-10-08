@@ -54,7 +54,7 @@ alternatives, what could change it) before the text of `syntax.md`,
 [security policy](https://github.com/yxy-develop/.github/blob/HEAD/SECURITY.md)
 and [code of conduct](https://github.com/yxy-develop/.github/blob/HEAD/CODE_OF_CONDUCT.md)
 are shared by every Yxy repository. Anything else:
-[contact@yxy.dev](mailto:contact@yxy.dev).
+[hello@yxy.dev](mailto:hello@yxy.dev).
 
 ## Em português
 
@@ -79,7 +79,7 @@ linguagem, comece pelo [guia em português](https://yxy.dev/pt/docs/guia).
 Uma mudança na linguagem começa como RFC nas
 [Discussões da Yxy](https://github.com/orgs/yxy-develop/discussions) e vira
 uma decisão em `decisions/` antes de mudar o texto. Contato:
-[contact@yxy.dev](mailto:contact@yxy.dev).
+[hello@yxy.dev](mailto:hello@yxy.dev).
 
 ## License
 
